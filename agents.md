@@ -185,16 +185,161 @@ Claude Code（あなた）がこのプロジェクトを開発する際の指針
 
 ## 次のステップ
 
-現在のフェーズ: **Phase 0 - 計画段階**
+現在のフェーズ: **Phase 1 完了 ✅**
 
 次にやること:
 1. ✅ `agents.md` 作成（このファイル）
 2. ✅ `claude.md` 作成
-3. ⏳ プロジェクト構造の作成（ディレクトリ、ファイル）
-4. ⏳ Phase 1: MVPの実装開始
+3. ✅ プロジェクト構造の作成（ディレクトリ、ファイル）
+4. ✅ Phase 1: MVPの実装完了
+5. ⏳ Phase 2: ストレージ機能の実装
+
+---
+
+## 分散コーディングガイド
+
+このプロジェクトは、複数の開発者やAIエージェントが協力して開発できるように設計されています。
+
+### 開発フロー
+
+1. **Issue作成**: 新機能やバグ修正のIssueを作成
+2. **ブランチ作成**: `feature/*`, `fix/*`, `phase/*` 命名規則に従う
+3. **実装**: 各Phaseのガイドラインに従って実装
+4. **PR作成**: テンプレートに従ってPRを作成
+5. **レビュー**: 他の開発者またはメンテナーがレビュー
+6. **マージ**: 承認後にmainブランチにマージ
+
+### ブランチ命名規則
+
+```
+feature/<機能名>     - 新機能の開発（例: feature/indexeddb-storage）
+fix/<バグ名>         - バグ修正（例: fix/markdown-escape-bug）
+phase/<番号>         - フェーズ別実装（例: phase/2-storage）
+docs/<内容>          - ドキュメント更新（例: docs/api-guide）
+refactor/<内容>      - リファクタリング（例: refactor/db-module）
+test/<内容>          - テスト追加（例: test/content-extraction）
+claude/<機能-ID>     - Claude Codeによる自動開発ブランチ
+```
+
+### Phase別タスク割り当て
+
+#### Phase 2: ストレージ機能 🔄
+**担当可能なエージェント/開発者**:
+- データベース設計が得意な開発者
+- IndexedDB経験者
+- 画像処理の知識がある開発者
+
+**主要タスク**:
+1. `src/modules/db.js` - IndexedDB wrapper実装
+2. `src/modules/image-handler.js` - 画像ダウンロード・管理
+3. `src/background/service-worker.js` - ストレージ統合
+4. テスト作成
+
+**依存関係**: Phase 1完了（✅）
+
+#### Phase 3: エクスポート機能 ⏳
+**担当可能なエージェント/開発者**:
+- ファイル操作に詳しい開発者
+- ZIP処理の経験者
+
+**主要タスク**:
+1. `src/modules/file-exporter.js` - ZIP作成実装
+2. `src/lib/jszip.min.js` - ライブラリ統合
+3. エクスポートUIの実装
+4. テスト作成
+
+**依存関係**: Phase 2完了
+
+#### Phase 4: 翻訳機能 ⏳
+**担当可能なエージェント/開発者**:
+- API統合経験者
+- Anthropic API知識がある開発者
+- 自然言語処理の知識
+
+**主要タスク**:
+1. `src/modules/translator.js` - Anthropic API統合
+2. `src/options/options.html` - 翻訳設定UI
+3. プロンプト管理機能
+4. エラーハンドリング
+5. テスト作成
+
+**依存関係**: Phase 2完了
+
+### ファイル所有権（推奨）
+
+各ファイルの主担当を明確にすることで、競合を避けます：
+
+| ファイル | 担当フェーズ | 説明 |
+|---------|------------|------|
+| `manifest.json` | Phase 1 ✅ | 拡張機能マニフェスト |
+| `src/content/content-script.js` | Phase 1 ✅ | コンテンツ抽出 |
+| `src/popup/popup.*` | Phase 1 ✅ | ポップアップUI |
+| `src/background/service-worker.js` | Phase 1 ✅, 2, 3, 4 | バックグラウンド処理（拡張予定） |
+| `src/modules/db.js` | Phase 2 | IndexedDB管理 |
+| `src/modules/image-handler.js` | Phase 2 | 画像処理 |
+| `src/modules/file-exporter.js` | Phase 3 | ファイルエクスポート |
+| `src/modules/translator.js` | Phase 4 | 翻訳機能 |
+| `src/options/options.*` | Phase 4 | 設定画面 |
+
+### 並行開発のベストプラクティス
+
+1. **モジュール分離**: 各モジュールは独立して開発可能
+2. **インターフェース定義**: モジュール間のAPIを先に定義
+3. **Mock実装**: 依存モジュールが未完成の場合はMockを使用
+4. **定期的な同期**: main/developブランチから定期的にpull
+5. **小さいPR**: 大きな変更は複数のPRに分割
+
+### コミュニケーション
+
+- **Issue**: 機能リクエスト、バグ報告
+- **PR**: コードレビュー、実装議論
+- **Discussion**: アーキテクチャ、設計の議論
+- **Wiki**: 詳細なドキュメント、ガイド
+
+### AIエージェント向けガイド
+
+Claude CodeなどのAIエージェントが開発に参加する場合：
+
+1. **ブランチ命名**: `claude/<機能名>-<セッションID>` を使用
+2. **コミットメッセージ**: 明確で詳細な説明を含める
+3. **テスト**: 実装後は必ず動作確認
+4. **ドキュメント**: コード変更時はREADME/コメントも更新
+5. **依存関係**: package.jsonやmanifest.jsonの変更は慎重に
+
+### コードレビューチェックリスト
+
+レビュアーは以下を確認：
+
+- [ ] コーディングスタイルガイドに準拠
+- [ ] エラーハンドリングが適切
+- [ ] セキュリティ上の問題なし（XSS, APIキー漏洩など）
+- [ ] パフォーマンスへの影響を考慮
+- [ ] テストが含まれている（Phase 2以降）
+- [ ] ドキュメントが更新されている
+- [ ] Manifest V3のベストプラクティスに従っている
+
+### トラブルシューティング（分散開発）
+
+#### マージコンフリクト
+```bash
+# 最新のmainを取得
+git fetch origin main
+git merge origin/main
+
+# コンフリクトを解決
+# ... エディタで編集 ...
+
+git add .
+git commit -m "Merge: Resolve conflicts with main"
+```
+
+#### 並行開発での問題
+- **同じファイルの編集**: 担当を明確にし、事前に調整
+- **依存関係の変更**: Issue/PRで事前に通知
+- **API変更**: インターフェース変更は慎重に、後方互換性を考慮
 
 ---
 
 **最終更新日**: 2026-02-11
 **バージョン**: 0.1.0
-**ステータス**: 🟡 計画中
+**ステータス**: 🟢 Phase 1完了 / Phase 2-4開発準備中
