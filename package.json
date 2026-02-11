@@ -68,5 +68,8 @@
     "translation"
   ],
   "author": "shimesaba-type0",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "marked": "^17.0.2"
+  }
 }

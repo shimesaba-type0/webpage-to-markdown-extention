@@ -69,12 +69,31 @@ async function handleExtract() {
     const result = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
 
     if (result.success) {
-      showStatus('✓ Content extracted and saved successfully!', 'success');
+      showStatus('✓ Content extracted!', 'success');
 
-      // Reload article list
-      setTimeout(() => {
-        loadSavedArticles();
-      }, 500);
+      // Open side panel and send data
+      try {
+        // Set flag to indicate we want to display content
+        await chrome.storage.local.set({ pendingExtraction: true });
+
+        // Open side panel
+        await chrome.sidePanel.open({ windowId: tab.windowId });
+
+        // Send data to side panel
+        setTimeout(async () => {
+          await chrome.runtime.sendMessage({
+            action: 'displayMarkdown',
+            data: result.data
+          });
+        }, 500);
+
+        // Close popup
+        window.close();
+      } catch (error) {
+        console.error('[Popup] Side panel error:', error);
+        // Fallback: just show success
+        showStatus('✓ Content extracted! Open side panel to view.', 'success');
+      }
 
       // Auto-translate if enabled
       const settings = await chrome.storage.sync.get({
