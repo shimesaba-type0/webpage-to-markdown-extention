@@ -154,55 +154,467 @@ remote: error: GH006: Protected branch update failed for refs/heads/main.
 
 ### 前提条件
 
-- Google Chrome または Microsoft Edge ブラウザ
-- Git
+- **ブラウザ**: Google Chrome 88+ または Microsoft Edge 88+
+- **ツール**: Git（クローン時）または ZIPダウンロード
+- **オプション**: ImageMagick（アイコン生成時）
 
-### インストール手順
+---
 
-1. **リポジトリのクローン**
+## 📦 インストール方法
+
+### 方法A: Git Clone（推奨・開発者向け）
+
+開発に参加する場合や、最新のコードを追跡したい場合：
 
 ```bash
+# 1. リポジトリをクローン
 git clone https://github.com/shimesaba-type0/webpage-to-markdown-extention.git
+
+# 2. ディレクトリに移動
 cd webpage-to-markdown-extention
+
+# 3. ブランチを確認（mainまたは開発ブランチ）
+git branch -a
 ```
 
-2. **アイコンの準備（重要）**
+### 方法B: ZIP ダウンロード（手軽・試用向け）
 
-現在、PNGアイコンが不足しています。以下のいずれかの方法でアイコンを作成してください：
+単純に試してみたい場合：
 
-**方法1: SVGからPNGを生成（推奨）**
+1. **GitHubページを開く**
+   ```
+   https://github.com/shimesaba-type0/webpage-to-markdown-extention
+   ```
 
+2. **ZIPをダウンロード**
+   - 緑色の「Code」ボタンをクリック
+   - 「Download ZIP」を選択
+   - ダウンロードした `webpage-to-markdown-extention-main.zip` を解凍
+
+3. **解凍先を確認**
+   ```
+   解凍後のフォルダ構成:
+   webpage-to-markdown-extention-main/
+   ├── manifest.json          ← これがあることを確認
+   ├── src/
+   ├── icons/
+   └── README.md
+   ```
+
+---
+
+## 🎨 必須: アイコンの作成
+
+**⚠️ 重要**: 拡張機能を読み込むには、PNGアイコンが必須です。
+
+### 現状
+
+プロジェクトには **SVGテンプレート** のみが含まれています：
+- `icons/icon.svg` ✅ 存在
+- `icons/icon16.png` ❌ 未作成
+- `icons/icon48.png` ❌ 未作成
+- `icons/icon128.png` ❌ 未作成
+
+### 方法1: ImageMagick で生成（推奨）
+
+#### Linuxの場合:
 ```bash
+# ImageMagickをインストール
+sudo apt install imagemagick
+
+# iconsディレクトリに移動
 cd icons
-# ImageMagickを使用（要インストール）
+
+# SVGからPNGを生成
+convert -background none icon.svg -resize 16x16 icon16.png
+convert -background none icon.svg -resize 48x48 icon48.png
+convert -background none icon.svg -resize 128x128 icon128.png
+
+# 確認
+ls -lh *.png
+```
+
+#### Macの場合:
+```bash
+# Homebrewでインストール
+brew install imagemagick
+
+# iconsディレクトリに移動
+cd icons
+
+# 同様にconvertコマンドを実行
 convert -background none icon.svg -resize 16x16 icon16.png
 convert -background none icon.svg -resize 48x48 icon48.png
 convert -background none icon.svg -resize 128x128 icon128.png
 ```
 
-**方法2: 一時的なダミーアイコンを作成**
+#### Windowsの場合:
+1. ImageMagickをダウンロード: https://imagemagick.org/script/download.php#windows
+2. インストール後、コマンドプロンプトで上記と同じコマンドを実行
 
-開発中は、任意の小さなPNG画像を `icons/` ディレクトリに以下の名前でコピーしてください：
-- `icon16.png` (16x16px)
-- `icon48.png` (48x48px)
-- `icon128.png` (128x128px)
+### 方法2: オンラインコンバーター（ImageMagickなし）
 
-詳細は `icons/README.md` を参照してください。
+1. **CloudConvert を開く**
+   ```
+   https://cloudconvert.com/svg-to-png
+   ```
 
-3. **Chromeに拡張機能を読み込む**
+2. **icon.svg をアップロード**
+   - `icons/icon.svg` を選択
 
-1. Chrome/Edgeを開く
-2. `chrome://extensions/` に移動
-3. 「デベロッパーモード」を有効化（右上のトグル）
-4. 「パッケージ化されていない拡張機能を読み込む」をクリック
-5. プロジェクトのルートディレクトリ（`manifest.json`があるフォルダ）を選択
+3. **サイズを指定して変換**
+   - 16x16, 48x48, 128x128 の3つを個別に変換
 
-4. **動作確認**
+4. **ダウンロードしてリネーム**
+   - ダウンロードしたファイルを `icon16.png`, `icon48.png`, `icon128.png` にリネーム
+   - `icons/` ディレクトリに配置
 
-- 任意のWebページを開く
-- 拡張機能アイコンをクリック
-- 「Extract & Convert」ボタンをクリック
-- コンソールログで動作を確認（F12で開発者ツールを開く）
+### 方法3: 一時的なダミーアイコン（開発のみ）
+
+**急いでテストしたい場合**（本番環境では非推奨）：
+
+```bash
+cd icons
+
+# 任意の画像ファイルをコピーしてリネーム
+# 例: デスクトップから適当な画像を持ってくる
+cp ~/Desktop/any-image.png icon16.png
+cp ~/Desktop/any-image.png icon48.png
+cp ~/Desktop/any-image.png icon128.png
+```
+
+### 確認
+
+```bash
+cd icons
+ls -lh icon*.png
+```
+
+**期待される出力**:
+```
+-rw-r--r-- 1 user user  XXX  Feb 11 12:00 icon16.png
+-rw-r--r-- 1 user user  XXX  Feb 11 12:00 icon48.png
+-rw-r--r-- 1 user user  XXX  Feb 11 12:00 icon128.png
+```
+
+---
+
+## 🚀 Chrome拡張機能の読み込み
+
+### Step 1: Chrome/Edge の拡張機能ページを開く
+
+**Chrome の場合:**
+1. Chromeを起動
+2. アドレスバーに `chrome://extensions/` を入力してEnter
+3. または、メニュー（⋮）→「その他のツール」→「拡張機能」
+
+**Edge の場合:**
+1. Edgeを起動
+2. アドレスバーに `edge://extensions/` を入力してEnter
+3. または、メニュー（…）→「拡張機能」
+
+### Step 2: デベロッパーモードを有効化
+
+1. 拡張機能ページの **右上** にある「デベロッパーモード」のトグルスイッチを探す
+2. トグルを **ON** にする（青色になる）
+3. 新しいボタンが表示される:
+   - 「パッケージ化されていない拡張機能を読み込む」
+   - 「拡張機能をパッケージ化」
+   - 「拡張機能を更新」
+
+### Step 3: 拡張機能を読み込む
+
+1. **「パッケージ化されていない拡張機能を読み込む」** ボタンをクリック
+
+2. **フォルダ選択ダイアログ** が開く
+
+3. **プロジェクトのルートディレクトリを選択**:
+   ```
+   選択するフォルダ:
+   webpage-to-markdown-extention/     ← このフォルダを選択
+   ├── manifest.json                  ← これが見えるフォルダ
+   ├── src/
+   ├── icons/
+   └── README.md
+
+   ❌ 間違った選択:
+   webpage-to-markdown-extention/src/  ← srcフォルダは選択しない
+   ```
+
+4. **「フォルダーの選択」** をクリック
+
+### Step 4: 読み込み完了の確認
+
+**成功した場合**:
+- 拡張機能リストに「Webpage to Markdown」が表示される
+- バージョン: `0.1.0`
+- ステータス: 「有効」（青いトグル）
+- ツールバーに拡張機能アイコンが表示される
+
+**エラーが出た場合**:
+- 「Could not load icon」
+  → アイコンのPNGファイルが不足しています（上記の「アイコンの作成」参照）
+
+- 「Manifest file is missing or unreadable」
+  → 間違ったフォルダを選択しています。`manifest.json` があるフォルダを選択してください
+
+- 「Manifest version 2 is deprecated」
+  → このプロジェクトはManifest V3なので、このエラーは出ません
+
+---
+
+## 🧪 動作テスト
+
+### Step 1: テストサイトを開く
+
+以下のいずれかのサイトを開いてください（テスト済み）：
+
+**推奨テストサイト**:
+1. **MDN Web Docs**（技術記事）
+   ```
+   https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Introduction
+   ```
+
+2. **Wikipedia**（一般記事）
+   ```
+   https://en.wikipedia.org/wiki/Markdown
+   ```
+
+3. **Medium記事**（ブログ）
+   ```
+   https://medium.com/（任意の記事）
+   ```
+
+4. **Qiita記事**（日本語技術記事）
+   ```
+   https://qiita.com/（任意の記事）
+   ```
+
+### Step 2: 拡張機能を起動
+
+1. **拡張機能アイコンをクリック**
+   - ツールバー（アドレスバーの右側）に表示されているアイコンをクリック
+   - アイコンが見えない場合:
+     - パズルピースアイコン（拡張機能メニュー）をクリック
+     - 「Webpage to Markdown」を探してクリック
+
+2. **ポップアップが開く**
+   - タイトル: "Webpage to Markdown"
+   - ボタン: "Extract & Convert"
+   - セクション: "Saved Articles"（Phase 1では空）
+
+### Step 3: コンテンツを抽出
+
+1. **開発者ツールを開く**（ログ確認用）
+   - `F12` キーを押す
+   - または、右クリック → 「検証」
+   - 「Console」タブを選択
+
+2. **「Extract & Convert」ボタンをクリック**
+
+3. **ステータスメッセージを確認**
+   - ポップアップ内に以下のメッセージが順番に表示される:
+     ```
+     Extracting content...
+     Converting to Markdown...
+     ✓ Content extracted and saved successfully!
+     ```
+
+### Step 4: コンソールログを確認
+
+**期待されるログ出力**:
+
+```javascript
+[Webpage to Markdown] Content script loaded
+[Webpage to Markdown] Starting content extraction...
+[Webpage to Markdown] Content extracted successfully
+[Webpage to Markdown] Markdown conversion completed
+[Webpage to Markdown] Found X images
+[Webpage to Markdown] Metadata collected: {title: "...", author: "...", ...}
+[Service Worker] Saving article: Article Title
+Article metadata: {title: "...", url: "...", ...}
+Markdown length: XXXX
+Images: X
+[Service Worker] Article saved with ID: 1234567890
+```
+
+### Step 5: 結果の確認
+
+**Phase 1（現在）の動作**:
+- ✅ コンテンツが抽出される
+- ✅ Markdownに変換される
+- ✅ コンソールにログが出力される
+- ✅ メタデータが収集される
+- ❌ **記事は保存されません**（Phase 2で実装予定）
+- ❌ **画像はダウンロードされません**（Phase 2で実装予定）
+
+**確認すべきポイント**:
+
+1. **コンソールログに以下が含まれている**:
+   - `Content extracted successfully` ✅
+   - `Markdown conversion completed` ✅
+   - 記事のタイトルが正しい ✅
+   - URLが正しい ✅
+
+2. **エラーが出ていない**:
+   - 赤いエラーメッセージがない ✅
+
+3. **ステータス表示**:
+   - 緑色の成功メッセージが表示される ✅
+
+---
+
+## 📝 テスト結果の例
+
+### 成功例（MDN）
+
+**入力サイト**: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Introduction
+
+**コンソール出力**:
+```
+[Webpage to Markdown] Content extracted successfully
+[Webpage to Markdown] Markdown conversion completed
+[Webpage to Markdown] Found 3 images
+[Webpage to Markdown] Metadata collected: {
+  title: "JavaScript Guide - Introduction",
+  author: null,
+  url: "https://developer.mozilla.org/...",
+  siteName: "MDN Web Docs"
+}
+```
+
+**Markdown長**: 約5000文字
+
+**ステータス**: ✅ 成功
+
+### 成功例（Wikipedia）
+
+**入力サイト**: https://en.wikipedia.org/wiki/Markdown
+
+**コンソール出力**:
+```
+[Webpage to Markdown] Content extracted successfully
+[Webpage to Markdown] Markdown conversion completed
+[Webpage to Markdown] Found 8 images
+[Webpage to Markdown] Metadata collected: {
+  title: "Markdown - Wikipedia",
+  author: null,
+  url: "https://en.wikipedia.org/wiki/Markdown"
+}
+```
+
+**Markdown長**: 約15000文字
+
+**ステータス**: ✅ 成功
+
+---
+
+## 🐛 トラブルシューティング
+
+### エラー: "Could not load icon"
+
+**原因**: PNGアイコンファイルが不足
+
+**解決方法**:
+1. 上記の「アイコンの作成」セクションを参照
+2. `icons/icon16.png`, `icons/icon48.png`, `icons/icon128.png` を作成
+3. 拡張機能を再読み込み（拡張機能ページの「更新」ボタンをクリック）
+
+### エラー: "Content script not loaded"
+
+**原因**: ページがリロードされていない、またはコンテンツスクリプトが注入されていない
+
+**解決方法**:
+1. テストページを**リロード**（F5）
+2. 拡張機能アイコンをクリック
+3. 再度「Extract & Convert」をクリック
+
+### エラー: "Could not extract article content"
+
+**原因**: ReadabilityがコンテンツをPage抽出できなかった
+
+**対象サイト**:
+- SNS（Twitter, Facebookなど）
+- 動的コンテンツの多いサイト
+- ログインが必要なページ
+
+**解決方法**:
+1. 別のテストサイト（MDN, Wikipediaなど）で試す
+2. 記事本文が含まれるページで試す
+3. Phase 5で手動選択機能を追加予定
+
+### ボタンをクリックしても何も起きない
+
+**原因**: JavaScript エラー、または拡張機能が正しく読み込まれていない
+
+**解決方法**:
+1. **コンソールを確認**（F12 → Console）
+2. **赤いエラーメッセージ**を探す
+3. 拡張機能を**再読み込み**:
+   - `chrome://extensions/` に移動
+   - 「更新」ボタン（円形の矢印）をクリック
+4. ページを**リロード**（F5）
+5. 再試行
+
+### 拡張機能アイコンが表示されない
+
+**原因**: ツールバーに固定されていない
+
+**解決方法**:
+1. ツールバーの**パズルピースアイコン**をクリック
+2. 「Webpage to Markdown」を探す
+3. **ピンアイコン**（📌）をクリックしてツールバーに固定
+
+---
+
+## 🔍 詳細なログの確認
+
+### Service Worker ログの確認
+
+拡張機能のバックグラウンド処理を確認したい場合:
+
+1. `chrome://extensions/` を開く
+2. 「Webpage to Markdown」を探す
+3. 「サービスワーカー」の横にある **「inspect」** リンクをクリック
+4. 新しいDevToolsウィンドウが開く
+5. Consoleタブでログを確認
+
+### Content Script ログの確認
+
+Webページ上のコンテンツスクリプトのログを確認:
+
+1. テストページで **F12** を押す
+2. **Console** タブを選択
+3. `[Webpage to Markdown]` で始まるログをフィルタ
+
+---
+
+## ✅ テスト完了チェックリスト
+
+Phase 1のテストを完了するには、以下を確認してください:
+
+- [ ] アイコンを作成した（icon16.png, icon48.png, icon128.png）
+- [ ] 拡張機能を Chrome/Edge に読み込んだ
+- [ ] 拡張機能がエラーなく読み込まれた
+- [ ] MDN または Wikipedia でテストした
+- [ ] 「Extract & Convert」ボタンをクリックした
+- [ ] コンソールログを確認した
+- [ ] 「Content extracted successfully」が表示された
+- [ ] 「Markdown conversion completed」が表示された
+- [ ] エラーメッセージが出ていない
+- [ ] ステータスメッセージが緑色で表示された
+
+すべてチェックできたら、Phase 1のテストは完了です！🎉
+
+---
+
+## 📚 次のステップ
+
+Phase 1のテストが完了したら:
+
+1. **Issue #3**: アイコンを正式に作成（デザインの改善）
+2. **Issue #4**: Phase 2の実装（IndexedDB + 画像処理）
+3. **PR #2**: Phase 1のコードレビュー・マージ
 
 ### トラブルシューティング
 
