@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Webpage to Markdown - Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Settings</h1>
+
+    <section>
+      <h2>Translation Settings</h2>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="enable-translation">
+          Enable translation feature
+        </label>
+        <p class="help-text">
+          Turn on to enable AI-powered translation from any language to Japanese.
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label for="api-key">Anthropic API Key:</label>
+        <input type="password" id="api-key" placeholder="sk-ant-...">
+        <button id="show-key-btn">Show</button>
+      </div>
+      <p class="help-text">
+        Get your API key from <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a>
+      </p>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="preserve-original">
+          Always keep original text (recommended)
+        </label>
+        <p class="help-text">
+          Saves both original and translated versions. You can switch between them in the UI.
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label for="translation-prompt">Custom Translation Prompt:</label>
+        <textarea id="translation-prompt" rows="12" placeholder="Enter your custom prompt here..."></textarea>
+        <div class="prompt-actions">
+          <button id="reset-prompt-btn">Reset to Default</button>
+          <button id="preview-prompt-btn">Preview</button>
+        </div>
+      </div>
+      <p class="help-text">
+        Use <code>{content}</code> as a placeholder for the text to be translated.
+        The system will replace it with the actual Markdown content.
+      </p>
+    </section>
+
+    <section>
+      <h2>Export Settings</h2>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="include-metadata">
+          Include metadata.json in exports
+        </label>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="auto-translate">
+          Auto-translate after extraction
+        </label>
+        <p class="help-text">
+          Automatically translates content after extracting from webpage.
+          Requires translation feature to be enabled.
+        </p>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button id="save-btn" class="primary">Save Settings</button>
+      <button id="clear-data-btn" class="danger">Clear All Data</button>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# Ignore third-party libraries
+src/lib/
+
+# Ignore build output
+dist/
+coverage/
+
+# Ignore node modules
+node_modules/

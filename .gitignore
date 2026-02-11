@@ -1,0 +1,23 @@
+# Development files
+node_modules/
+.DS_Store
+*.log
+*.swp
+.vscode/
+.idea/
+
+# Build output
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.bak
+*~
+
+# Environment files
+.env
+.env.local
+
+# OS files
+Thumbs.db

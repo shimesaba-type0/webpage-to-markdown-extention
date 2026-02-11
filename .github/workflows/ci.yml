@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test and Lint
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run ESLint
+      run: npm run lint
+
+    - name: Run tests
+      run: npm test
+
+    - name: Generate coverage report
+      run: npm run test:coverage
+
+    - name: Upload coverage to Codecov (optional)
+      if: success()
+      uses: codecov/codecov-action@v4
+      continue-on-error: true
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage/lcov.info
+        fail_ci_if_error: false
+
+  validate:
+    name: Validate Extension
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check manifest.json syntax
+      run: |
+        if ! jq empty manifest.json; then
+          echo "manifest.json is not valid JSON"
+          exit 1
+        fi
+        echo "✓ manifest.json is valid"
+
+    - name: Check required files exist
+      run: |
+        files=(
+          "manifest.json"
+          "src/popup/popup.html"
+          "src/popup/popup.js"
+          "src/content/content-script.js"
+          "src/background/service-worker.js"
+          "src/options/options.html"
+        )
+        for file in "${files[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "✗ Required file missing: $file"
+            exit 1
+          fi
+          echo "✓ Found: $file"
+        done
+
+    - name: Validate icon files
+      run: |
+        if [ ! -f "icons/icon.svg" ]; then
+          echo "⚠️  Warning: icons/icon.svg not found"
+        else
+          echo "✓ Source icon found: icons/icon.svg"
+        fi
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run npm audit
+      run: npm audit --audit-level=moderate
+      continue-on-error: true
+
+    - name: Check for hardcoded secrets
+      run: |
+        # Check for actual API keys (not placeholders)
+        if grep -r "sk-ant-[a-zA-Z0-9]\{32,\}" src/ --exclude="*.html"; then
+          echo "✗ Found potential hardcoded API key"
+          exit 1
+        fi
+        # Check for hardcoded passwords in JS files
+        if grep -r "password\s*=\s*['\"][^'\"]\+" src/**/*.js; then
+          echo "✗ Found potential hardcoded password"
+          exit 1
+        fi
+        echo "✓ No obvious hardcoded secrets found"

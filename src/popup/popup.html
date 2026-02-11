@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webpage to Markdown</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Webpage to Markdown</h1>
+      <p class="subtitle">Convert & Save Web Content</p>
+    </header>
+
+    <main>
+      <div class="actions">
+        <button id="extract-btn" class="btn btn-primary">
+          <span class="icon">📄</span>
+          Extract & Convert
+        </button>
+        <button id="translate-btn" class="btn btn-secondary" style="display: none;">
+          <span class="icon">🌐</span>
+          Translate to JP
+        </button>
+      </div>
+
+      <div id="status" class="status"></div>
+
+      <div class="saved-section">
+        <div class="section-header">
+          <h2>Saved Articles</h2>
+          <span id="article-count" class="count">0</span>
+        </div>
+        <div id="article-list" class="article-list">
+          <p class="empty-message">No articles saved yet</p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <button id="settings-btn" class="btn btn-text">
+        <span class="icon">⚙️</span>
+        Settings
+      </button>
+      <button id="export-all-btn" class="btn btn-text" style="display: none;">
+        <span class="icon">💾</span>
+        Export All
+      </button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
