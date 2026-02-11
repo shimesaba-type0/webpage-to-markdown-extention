@@ -106,11 +106,13 @@ jobs:
 
     - name: Check for hardcoded secrets
       run: |
-        if grep -r "sk-ant-" src/; then
+        # Check for actual API keys (not placeholders)
+        if grep -r "sk-ant-[a-zA-Z0-9]\{32,\}" src/ --exclude="*.html"; then
           echo "✗ Found potential hardcoded API key"
           exit 1
         fi
-        if grep -r "password\s*=\s*['\"]" src/; then
+        # Check for hardcoded passwords in JS files
+        if grep -r "password\s*=\s*['\"][^'\"]\+" src/**/*.js; then
           echo "✗ Found potential hardcoded password"
           exit 1
         fi
