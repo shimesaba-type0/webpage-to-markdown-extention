@@ -3,6 +3,11 @@
  * Handles background tasks and message passing
  */
 
+/* global importScripts, storageManager, imageDownloader */
+
+// Import storage modules
+importScripts('../storage/storage-manager.js', '../storage/image-downloader.js');
+
 console.log('[Service Worker] Starting...');
 
 // Extension installation/update handler
@@ -57,6 +62,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'getArticle') {
+    handleGetArticle(request.articleId)
+      .then(article => sendResponse({ success: true, article }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'deleteArticle') {
+    handleDeleteArticle(request.articleId)
+      .then(result => sendResponse({ success: true, result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   if (request.action === 'displayMarkdown') {
     // Forward message to side panel
     chrome.runtime.sendMessage(request)
@@ -68,24 +87,64 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 /**
  * Handle save article request
- * Phase 1: Just log the data (IndexedDB implementation in Phase 2)
+ * Phase 2: Implement IndexedDB storage with image downloads
  */
 async function handleSaveArticle(data) {
   try {
     console.log('[Service Worker] Saving article:', data.metadata.title);
 
-    // Phase 1: Log data for testing
-    console.log('Article metadata:', data.metadata);
-    console.log('Markdown length:', data.markdown.length);
-    console.log('Images:', data.images.length);
+    const { metadata, markdown } = data;
 
-    // TODO Phase 2: Implement IndexedDB storage
-    // - Download images
-    // - Update markdown image paths
-    // - Save to IndexedDB
+    // Extract image URLs from markdown
+    const imageUrls = imageDownloader.extractImageUrls(markdown);
+    console.log(`[Service Worker] Found ${imageUrls.length} images to download`);
 
-    // For now, just return a dummy ID
-    const articleId = Date.now();
+    // Download images
+    let downloadedImages = [];
+    let updatedMarkdown = markdown;
+    let imageMapping = {};
+
+    if (imageUrls.length > 0) {
+      try {
+        downloadedImages = await imageDownloader.downloadImages(imageUrls);
+        console.log(`[Service Worker] Downloaded ${downloadedImages.filter(i => i.success).length} images`);
+
+        // Create image mapping for markdown update
+        downloadedImages.forEach((img, index) => {
+          if (img.success) {
+            const localPath = imageDownloader.generateLocalPath(img.originalUrl, index);
+            imageMapping[img.originalUrl] = localPath;
+          }
+        });
+
+        // Update markdown with local paths
+        updatedMarkdown = imageDownloader.updateMarkdownImagePaths(markdown, imageMapping);
+      } catch (error) {
+        console.error('[Service Worker] Image download error:', error);
+        // Continue without images
+      }
+    }
+
+    // Save article to IndexedDB
+    const articleId = await storageManager.saveArticle({
+      metadata,
+      markdown: updatedMarkdown,
+      images: downloadedImages.filter(i => i.success)
+    });
+
+    // Save images to IndexedDB
+    for (const img of downloadedImages.filter(i => i.success)) {
+      try {
+        await storageManager.saveImage(articleId, {
+          originalUrl: img.originalUrl,
+          blob: img.blob,
+          mimeType: img.mimeType,
+          localPath: imageMapping[img.originalUrl]
+        });
+      } catch (error) {
+        console.error('[Service Worker] Image save error:', error);
+      }
+    }
 
     console.log('[Service Worker] Article saved with ID:', articleId);
 
@@ -159,14 +218,51 @@ async function handleGetArticles() {
   try {
     console.log('[Service Worker] Get all articles');
 
-    // TODO Phase 2: Implement IndexedDB queries
-    // - Query all articles
-    // - Return with metadata
+    const articles = await storageManager.getAllArticles();
+    console.log(`[Service Worker] Retrieved ${articles.length} articles`);
 
-    // For now, return empty array
-    return [];
+    return articles;
   } catch (error) {
     console.error('[Service Worker] Get articles error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Handle get single article request
+ */
+async function handleGetArticle(articleId) {
+  try {
+    console.log('[Service Worker] Get article:', articleId);
+
+    const article = await storageManager.getArticle(articleId);
+
+    if (!article) {
+      throw new Error('Article not found');
+    }
+
+    console.log('[Service Worker] Retrieved article:', article.metadata.title);
+
+    return article;
+  } catch (error) {
+    console.error('[Service Worker] Get article error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Handle delete article request
+ */
+async function handleDeleteArticle(articleId) {
+  try {
+    console.log('[Service Worker] Delete article:', articleId);
+
+    await storageManager.deleteArticle(articleId);
+    console.log('[Service Worker] Article deleted successfully');
+
+    return true;
+  } catch (error) {
+    console.error('[Service Worker] Delete article error:', error);
     throw error;
   }
 }

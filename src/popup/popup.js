@@ -183,11 +183,16 @@ async function exportAll() {
  */
 async function loadSavedArticles() {
   try {
-    // Placeholder: In Phase 2, this will load from IndexedDB
-    // For now, show empty state
+    // Load from IndexedDB via background script
+    const response = await chrome.runtime.sendMessage({
+      action: 'getArticles'
+    });
 
-    const articles = []; // TODO: Load from IndexedDB
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to load articles');
+    }
 
+    const articles = response.articles || [];
     articleCountEl.textContent = articles.length;
 
     if (articles.length === 0) {
@@ -199,36 +204,120 @@ async function loadSavedArticles() {
     // Render article list
     articleListEl.innerHTML = articles.map(article => `
       <div class="article-item" data-id="${article.id}">
-        <div class="article-title">${escapeHtml(article.title)}</div>
+        <div class="article-title">${escapeHtml(article.metadata.title)}</div>
         <div class="article-meta">
-          <span>${formatDate(article.timestamp)}</span>
-          <span class="dot"></span>
-          <span>${article.siteName || 'Unknown'}</span>
+          <span>${formatDate(article.metadata.timestamp)}</span>
+          <span class="dot">•</span>
+          <span>${escapeHtml(article.metadata.siteName || 'Unknown')}</span>
+          ${article.hasTranslation ? '<span class="badge">翻訳済み</span>' : ''}
+        </div>
+        <div class="article-actions">
+          <button class="action-btn view-btn" data-id="${article.id}" title="View">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+          <button class="action-btn delete-btn" data-id="${article.id}" title="Delete">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
         </div>
       </div>
     `).join('');
 
-    // Add click listeners to article items
-    document.querySelectorAll('.article-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const articleId = parseInt(item.dataset.id);
+    // Add click listeners
+    document.querySelectorAll('.view-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const articleId = parseInt(btn.dataset.id);
         viewArticle(articleId);
+      });
+    });
+
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const articleId = parseInt(btn.dataset.id);
+        await deleteArticle(articleId);
       });
     });
 
     exportAllBtn.style.display = 'flex';
   } catch (error) {
     console.error('[Popup] Load articles error:', error);
+    articleListEl.innerHTML = '<p class="error-message">Failed to load articles</p>';
   }
 }
 
 /**
  * View article details
  */
-function viewArticle(articleId) {
-  // TODO: Implement article viewer in Phase 2
-  console.log('View article:', articleId);
-  showStatus('Article viewer coming in Phase 2', 'info');
+async function viewArticle(articleId) {
+  try {
+    // Get article data
+    const response = await chrome.runtime.sendMessage({
+      action: 'getArticle',
+      articleId
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to get article');
+    }
+
+    // Open side panel with article
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    await chrome.storage.local.set({ pendingExtraction: true });
+    await chrome.sidePanel.open({ windowId: tab.windowId });
+
+    // Send article data to side panel
+    setTimeout(async () => {
+      await chrome.runtime.sendMessage({
+        action: 'displayMarkdown',
+        data: response.article
+      });
+    }, 500);
+
+    // Close popup
+    window.close();
+  } catch (error) {
+    console.error('[Popup] View article error:', error);
+    showStatus(`✗ ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Delete article
+ */
+async function deleteArticle(articleId) {
+  try {
+    if (!confirm('Are you sure you want to delete this article?')) {
+      return;
+    }
+
+    showStatus('Deleting article...', 'loading');
+
+    const response = await chrome.runtime.sendMessage({
+      action: 'deleteArticle',
+      articleId
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to delete article');
+    }
+
+    showStatus('✓ Article deleted', 'success');
+
+    // Reload article list
+    setTimeout(() => {
+      loadSavedArticles();
+    }, 500);
+  } catch (error) {
+    console.error('[Popup] Delete article error:', error);
+    showStatus(`✗ ${error.message}`, 'error');
+  }
 }
 
 /**
