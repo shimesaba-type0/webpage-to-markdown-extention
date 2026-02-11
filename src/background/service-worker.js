@@ -45,7 +45,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'exportAll') {
     handleExportAll()
-      .then(result => sendResponse({ success: true }))
+      .then(_result => sendResponse({ success: true }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }

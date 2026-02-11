@@ -57,9 +57,8 @@ async function handleExtract() {
     }
 
     // Check if content script is ready
-    let response;
     try {
-      response = await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
+      await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
     } catch (error) {
       throw new Error('Content script not loaded. Please refresh the page and try again.');
     }
