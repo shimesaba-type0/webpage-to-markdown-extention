@@ -16,7 +16,20 @@ WebページをクリーンなMarkdown形式に変換するブラウザ拡張機
 
 ## 開発状況
 
-🚧 **このプロジェクトは現在開発初期段階です** 🚧
+🚧 **Phase 1 MVP - 基本機能実装完了！** 🚧
+
+**完了した機能:**
+- ✅ 基本的なプロジェクト構造
+- ✅ コンテンツ抽出（Mozilla Readability）
+- ✅ Markdown変換（簡易版Turndown）
+- ✅ ポップアップUI
+- ✅ 設定ファイル（agents.md, claude.md）
+
+**開発中の機能:**
+- 🔄 IndexedDBストレージ（Phase 2）
+- 🔄 画像処理とダウンロード（Phase 2）
+- 🔄 ZIPエクスポート（Phase 3）
+- 🔄 翻訳機能（Anthropic API）（Phase 4）
 
 ## ブランチ戦略
 
@@ -139,11 +152,116 @@ remote: error: GH006: Protected branch update failed for refs/heads/main.
 
 ## 開発環境のセットアップ
 
-🚧 **Coming Soon** - 開発環境のセットアップ手順は後日追加予定です。
+### 前提条件
+
+- Google Chrome または Microsoft Edge ブラウザ
+- Git
+
+### インストール手順
+
+1. **リポジトリのクローン**
+
+```bash
+git clone https://github.com/shimesaba-type0/webpage-to-markdown-extention.git
+cd webpage-to-markdown-extention
+```
+
+2. **アイコンの準備（重要）**
+
+現在、PNGアイコンが不足しています。以下のいずれかの方法でアイコンを作成してください：
+
+**方法1: SVGからPNGを生成（推奨）**
+
+```bash
+cd icons
+# ImageMagickを使用（要インストール）
+convert -background none icon.svg -resize 16x16 icon16.png
+convert -background none icon.svg -resize 48x48 icon48.png
+convert -background none icon.svg -resize 128x128 icon128.png
+```
+
+**方法2: 一時的なダミーアイコンを作成**
+
+開発中は、任意の小さなPNG画像を `icons/` ディレクトリに以下の名前でコピーしてください：
+- `icon16.png` (16x16px)
+- `icon48.png` (48x48px)
+- `icon128.png` (128x128px)
+
+詳細は `icons/README.md` を参照してください。
+
+3. **Chromeに拡張機能を読み込む**
+
+1. Chrome/Edgeを開く
+2. `chrome://extensions/` に移動
+3. 「デベロッパーモード」を有効化（右上のトグル）
+4. 「パッケージ化されていない拡張機能を読み込む」をクリック
+5. プロジェクトのルートディレクトリ（`manifest.json`があるフォルダ）を選択
+
+4. **動作確認**
+
+- 任意のWebページを開く
+- 拡張機能アイコンをクリック
+- 「Extract & Convert」ボタンをクリック
+- コンソールログで動作を確認（F12で開発者ツールを開く）
+
+### トラブルシューティング
+
+#### エラー: "Could not load icon"
+
+→ `icons/` ディレクトリにPNGアイコンがありません。上記の「アイコンの準備」手順を実行してください。
+
+#### エラー: "Content script not loaded"
+
+→ ページをリロード（F5）してから再試行してください。
+
+#### ボタンをクリックしても何も起きない
+
+→ ブラウザのコンソール（F12）でエラーログを確認してください。
 
 ## テスト
 
-🚧 **Coming Soon** - テスト実行方法は後日追加予定です。
+### Phase 1 MVP テスト項目
+
+1. **基本的なコンテンツ抽出**
+   - [ ] ニュースサイト（例: NHK, BBC）で動作
+   - [ ] ブログ記事で動作
+   - [ ] 技術記事（例: Qiita, Medium）で動作
+
+2. **Markdown変換**
+   - [ ] 見出しが正しく変換される
+   - [ ] リストが正しく変換される
+   - [ ] リンクが正しく変換される
+   - [ ] コードブロックが正しく変換される
+
+3. **UI動作**
+   - [ ] ポップアップが正常に開く
+   - [ ] ボタンクリックで処理が開始される
+   - [ ] ステータスメッセージが表示される
+
+### テスト方法
+
+```bash
+# 1. 拡張機能を読み込む（上記の「開発環境のセットアップ」参照）
+
+# 2. テストサイトを開く
+# 例: https://developer.mozilla.org/en-US/docs/Web/JavaScript
+
+# 3. 拡張機能アイコンをクリック
+
+# 4. 「Extract & Convert」ボタンをクリック
+
+# 5. 開発者コンソールでログを確認
+# - F12キーを押して開発者ツールを開く
+# - Consoleタブを選択
+# - "[Webpage to Markdown]" で始まるログを確認
+```
+
+### 既知の問題（Phase 1）
+
+- **画像ダウンロード**: Phase 2で実装予定
+- **記事の保存**: Phase 2で実装予定（IndexedDB）
+- **翻訳機能**: Phase 4で実装予定
+- **エクスポート機能**: Phase 3で実装予定
 
 ## ライセンス
 
