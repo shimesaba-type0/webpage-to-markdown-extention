@@ -78,6 +78,16 @@ async function handleExtract() {
         // Fallback: pendingExtraction flag if SidePanel not ready
         await chrome.storage.local.set({ pendingExtraction: true });
 
+        // Configure side panel to be tab-specific (Issue #24)
+        // This ensures the panel only appears for this tab and closes when tab is closed
+        if (chrome.sidePanel && chrome.sidePanel.setOptions) {
+          await chrome.sidePanel.setOptions({
+            tabId: tab.id,
+            path: 'src/sidepanel/sidepanel.html',
+            enabled: true
+          });
+        }
+
         // Open side panel
         await chrome.sidePanel.open({ windowId: tab.windowId });
 
@@ -333,6 +343,16 @@ async function viewArticle(articleId) {
       images: response.article.images || []
     };
     await chrome.storage.local.set({ viewingArticle });
+
+    // Configure side panel to be tab-specific (Issue #24)
+    // This ensures the panel only appears for this tab and closes when tab is closed
+    if (chrome.sidePanel && chrome.sidePanel.setOptions) {
+      await chrome.sidePanel.setOptions({
+        tabId: tab.id,
+        path: 'src/sidepanel/sidepanel.html',
+        enabled: true
+      });
+    }
 
     // Open side panel (will do nothing if already open)
     await chrome.sidePanel.open({ windowId: tab.windowId });
