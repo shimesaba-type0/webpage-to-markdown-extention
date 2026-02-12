@@ -72,13 +72,24 @@ async function init() {
 }
 
 /**
- * Check if we should automatically extract content
+ * Check if we should automatically extract content or load saved article
  */
 async function checkPendingExtraction() {
-  // Check if there's a pending extraction request
   try {
-    const result = await chrome.storage.local.get('pendingExtraction');
-    if (result.pendingExtraction) {
+    // Check if there's a saved article to view
+    const result = await chrome.storage.local.get('viewingArticle');
+    if (result.viewingArticle) {
+      console.log('[SidePanel] Found saved article to view');
+      // Load the saved article
+      displayMarkdown(result.viewingArticle);
+      // Clear the storage
+      await chrome.storage.local.remove('viewingArticle');
+      return false;
+    }
+
+    // Otherwise check for pending extraction
+    const extractionResult = await chrome.storage.local.get('pendingExtraction');
+    if (extractionResult.pendingExtraction) {
       await chrome.storage.local.remove('pendingExtraction');
       return true;
     }
