@@ -78,8 +78,10 @@ async function checkPendingExtraction() {
   try {
     // Check if there's a saved article to view
     const result = await chrome.storage.local.get('viewingArticle');
+    console.log('[SidePanel] Storage check result:', result);
+
     if (result.viewingArticle) {
-      console.log('[SidePanel] Found saved article to view');
+      console.log('[SidePanel] Found saved article to view:', result.viewingArticle);
       // Load the saved article
       displayMarkdown(result.viewingArticle);
       // Clear the storage
@@ -132,7 +134,22 @@ async function extractContent() {
  */
 function displayMarkdown(data) {
   try {
+    console.log('[SidePanel] displayMarkdown called with data:', data);
+
+    // Validate data structure
+    if (!data) {
+      throw new Error('No data provided to displayMarkdown');
+    }
+
     const { metadata, markdown } = data;
+
+    // Validate required fields
+    if (!metadata) {
+      throw new Error('metadata is undefined in data: ' + JSON.stringify(data));
+    }
+    if (markdown === undefined) {
+      throw new Error('markdown is undefined in data');
+    }
 
     currentMarkdown = markdown;
     currentMetadata = metadata;
