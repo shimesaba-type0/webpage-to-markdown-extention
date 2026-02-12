@@ -201,6 +201,9 @@ async function loadSavedArticles() {
       return;
     }
 
+    // Get settings to check if translation is enabled
+    const settings = await chrome.storage.sync.get({ enableTranslation: false });
+
     // Render article list
     articleListEl.innerHTML = articles.map(article => `
       <div class="article-item" data-id="${article.id}">
@@ -218,6 +221,12 @@ async function loadSavedArticles() {
               <circle cx="12" cy="12" r="3"></circle>
             </svg>
           </button>
+          ${settings.enableTranslation && !article.hasTranslation ? `
+          <button class="action-btn translate-article-btn" data-id="${article.id}" title="Translate">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 8h14M5 8a2 2 0 1 1 0-4h14a2 2 0 1 1 0 4M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8m-9 4h2m-1-1v3"></path>
+            </svg>
+          </button>` : ''}
           <button class="action-btn export-btn" data-id="${article.id}" title="Export">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -241,6 +250,14 @@ async function loadSavedArticles() {
         e.stopPropagation();
         const articleId = parseInt(btn.dataset.id);
         viewArticle(articleId);
+      });
+    });
+
+    document.querySelectorAll('.translate-article-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const articleId = parseInt(btn.dataset.id);
+        await translateArticle(articleId);
       });
     });
 
@@ -299,6 +316,34 @@ async function viewArticle(articleId) {
     window.close();
   } catch (error) {
     console.error('[Popup] View article error:', error);
+    showStatus(`✗ ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Translate single article
+ */
+async function translateArticle(articleId) {
+  try {
+    showStatus('Translating article...', 'loading');
+
+    const response = await chrome.runtime.sendMessage({
+      action: 'translateArticle',
+      articleId
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to translate article');
+    }
+
+    showStatus('✓ Translation completed!', 'success');
+
+    // Reload article list to show updated badge
+    setTimeout(() => {
+      loadSavedArticles();
+    }, 1000);
+  } catch (error) {
+    console.error('[Popup] Translate article error:', error);
     showStatus(`✗ ${error.message}`, 'error');
   }
 }

@@ -3,13 +3,16 @@
  * Handles background tasks and message passing
  */
 
-/* global importScripts, storageManager, imageDownloader, fileExporter */
+/* global importScripts, storageManager, imageDownloader, fileExporter, translator */
 
 // Import storage modules
 importScripts('../storage/storage-manager.js', '../storage/image-downloader.js');
 
 // Import export modules
 importScripts('../lib/jszip.min.js', '../export/file-exporter.js');
+
+// Import translation modules
+importScripts('../translation/translator.js');
 
 console.log('[Service Worker] Starting...');
 
@@ -173,10 +176,12 @@ async function handleTranslateArticle(articleId) {
   try {
     console.log('[Service Worker] Translate article:', articleId);
 
-    // Check if translation is enabled
+    // Get settings
     const settings = await chrome.storage.sync.get({
       enableTranslation: false,
-      apiKey: ''
+      apiKey: '',
+      translationPrompt: '',
+      preserveOriginal: true
     });
 
     if (!settings.enableTranslation) {
@@ -187,13 +192,55 @@ async function handleTranslateArticle(articleId) {
       throw new Error('Anthropic API key not configured. Please set it in Settings.');
     }
 
-    // TODO Phase 4: Implement translation
-    // - Get article from IndexedDB
-    // - Split into sections
-    // - Translate with Anthropic API
-    // - Save translation
+    // Validate API key
+    const validation = translator.validateApiKey(settings.apiKey);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
 
-    throw new Error('Translation feature coming in Phase 4');
+    // Get article from IndexedDB
+    const article = await storageManager.getArticle(articleId);
+    if (!article) {
+      throw new Error('Article not found');
+    }
+
+    if (article.hasTranslation) {
+      console.log('[Service Worker] Article already translated, re-translating...');
+    }
+
+    // Create translator instance
+    const translatorInstance = translator.create(
+      settings.apiKey,
+      settings.translationPrompt || null
+    );
+
+    // Translate markdown
+    console.log('[Service Worker] Starting translation...');
+    const translatedMarkdown = await translatorInstance.translateMarkdown(
+      article.markdown,
+      (progress) => {
+        // Send progress updates to popup
+        chrome.runtime.sendMessage({
+          action: 'translationProgress',
+          articleId,
+          progress
+        }).catch(() => {
+          // Ignore errors if popup is closed
+        });
+
+        console.log(`[Service Worker] Translation progress: ${progress.percentage}% (${progress.current}/${progress.total})`);
+      }
+    );
+
+    // Save translation
+    await storageManager.saveTranslation(articleId, translatedMarkdown);
+    console.log('[Service Worker] Translation saved successfully');
+
+    return {
+      articleId,
+      translatedMarkdown,
+      originalPreserved: settings.preserveOriginal
+    };
   } catch (error) {
     console.error('[Service Worker] Translation error:', error);
     throw error;
