@@ -221,6 +221,9 @@ function displayMarkdown(data) {
           } catch (error) {
             console.error('[SidePanel] Failed to create blob URL for image:', img.localPath, error);
           }
+        } else {
+          // Rev1 feedback: Log warning for invalid images
+          console.warn('[SidePanel] Skipping invalid image (missing blob or localPath):', img);
         }
       }
 
