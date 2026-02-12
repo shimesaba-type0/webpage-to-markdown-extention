@@ -534,13 +534,312 @@ git commit -m "Merge: Resolve conflicts with main"
 
 ---
 
-**最終更新日**: 2026-02-11
-**バージョン**: 0.2.0
-**ステータス**: 🟢 Phase 1-2完了 / Phase 3-4開発準備完了
+## 自律的開発のためのベストプラクティス（Issues #24-27から得られた知見）
+
+### マルチチーム開発体制
+
+**チーム構成**:
+```
+Conductor (1名)
+├── Team A: Developer 1 + Reviewer 1
+├── Team B: Developer 2 + Reviewer 2
+└── Team C: Developer 3 + Reviewer 3
+```
+
+**役割**:
+- **Developer**: 実装計画作成 → コード実装 → 変更サマリー作成
+- **Reviewer**: コードレビュー → フィードバック → 承認/却下
+- **Conductor**: 依存関係分析 → チーム編成 → 統合 → コンフリクト解決
+
+### 開発ワークフロー
+
+#### 1. 実装前の必須事項
+
+**Developer実装プラン**:
+```markdown
+## Objective
+[何を達成するか]
+
+## Current State Analysis
+[現在のコードの状態]
+
+## Problem
+[何が問題か]
+
+## Solution Architecture
+[どう解決するか - アーキテクチャ図]
+
+## Files to Modify
+[変更するファイルと変更内容]
+
+## Implementation Steps
+[具体的な実装手順]
+
+## Expected Effects
+[期待される効果]
+```
+
+**重要**: プランなしに実装を開始しない！
+
+#### 2. 実装中の必須事項
+
+**変更サマリー**（各編集後に必ず作成）:
+```markdown
+**Dev[N] Change Summary #[X]**:
+- **File**: `path/to/file.js`
+- **Function**: `functionName()`
+- **Changes**:
+  - Added XXX functionality
+  - Fixed YYY bug
+  - Removed ZZZ pattern
+- **Effect**: [この変更の効果]
+```
+
+**重要**: 各Editツール使用後に即座に作成！
+
+#### 3. コードレビューの必須事項
+
+**Reviewer Report**:
+```markdown
+## Review Report for Issue #XX
+
+### ✅ Positive Aspects
+1. [良い点]
+2. [良い点]
+
+### ⚠️ Issues & Recommendations
+#### 🔴 Critical Issue 1: [タイトル]
+**Problem**: [問題]
+**Current Code**: [現在のコード]
+**Recommendation**: [推奨]
+
+#### 🟡 Medium Issue 2: [タイトル]
+[...]
+
+### 🎯 Review Summary
+**Overall Assessment**: [Excellent/Good/Needs Work]
+**Approval Status**: [APPROVED/CONDITIONAL/REJECTED]
+```
+
+**重要**: 必ず具体的なコード例と推奨事項を含める！
+
+### コミュニケーションパターン
+
+#### Developer → Reviewer
+1. 実装プランを提示
+2. 変更サマリーを都度提供
+3. レビュー依頼
+
+#### Reviewer → Conductor
+1. レビュー結果報告
+2. 承認/フィードバック
+3. 問題発見時は詳細なレポート
+
+#### Conductor → Teams
+1. 戦略的判断
+2. コンフリクト解決指示
+3. 統合判断
+
+### コンフリクト解決プロセス
+
+```
+1. Merge Reviewer: コンフリクト検出
+   ↓
+2. Report to Conductor: 詳細分析レポート提出
+   ↓
+3. Conductor: Resolution Team編成
+   ↓
+4. Resolution Developer: コンフリクト解決実装
+   ↓
+5. Resolution Reviewer: 解決内容検証
+   ↓
+6. Conductor: 統合承認
+```
+
+**Resolution Team編成基準**:
+- コンフリクトの複雑度がMedium以上
+- 複数ファイルに渡る変更
+- アーキテクチャ判断が必要
+
+### Positive Patterns ✅
+
+#### 1. メッセージベース通信 (Issue #26, #27)
+```javascript
+// ✅ Good: Direct message passing
+await chrome.runtime.sendMessage({
+  action: 'displayMarkdown',
+  data: { metadata, markdown, images }
+});
+
+// ❌ Bad: Storage polling only
+await chrome.storage.local.set({ data });
+// Wait and hope init() reads it...
+```
+
+**理由**: 明示的通信 > 暗黙的状態
+
+#### 2. APIバージョンチェック (Issue #24)
+```javascript
+// ✅ Good: Version check
+if (chrome.sidePanel && chrome.sidePanel.setOptions) {
+  await chrome.sidePanel.setOptions({ ... });
+}
+
+// ❌ Bad: Assume API exists
+await chrome.sidePanel.setOptions({ ... }); // May crash on old Chrome
+```
+
+**理由**: 後方互換性を保つ
+
+#### 3. メモリ管理 (Issue #25)
+```javascript
+// ✅ Good: Cleanup function
+function cleanupBlobUrls() {
+  for (const url of currentBlobUrls) {
+    URL.revokeObjectURL(url);
+  }
+  currentBlobUrls = [];
+}
+
+// ❌ Bad: No cleanup
+const blobUrl = URL.createObjectURL(blob);
+// Never revoked → memory leak
+```
+
+**理由**: メモリリークを防ぐ
+
+#### 4. 包括的なJSDoc (Issue #27)
+```javascript
+/**
+ * Check if we should automatically extract content
+ *
+ * Architecture (Issue #27):
+ * - Primary: Message-based communication (displayMarkdown action)
+ * - Fallback: storage.local flags for edge cases
+ *
+ * Returns:
+ * - true: Trigger auto-extraction
+ * - false: Article displayed from storage
+ * - null: No action needed
+ */
+async function checkPendingExtraction() { ... }
+```
+
+**理由**: アーキテクチャ判断を明確に記録
+
+### Negative Patterns ⚠️
+
+#### 1. ハードコードされたタイムアウト
+```javascript
+// ❌ Bad: Fragile timing
+setTimeout(async () => {
+  await chrome.runtime.sendMessage({ ... });
+}, 500); // What if SidePanel takes 600ms?
+
+// ✅ Better: Retry logic
+async function sendWithRetry(message, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await chrome.runtime.sendMessage(message);
+      return;
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 200 * (i + 1)));
+    }
+  }
+}
+```
+
+**理由**: 非決定的タイミングは脆弱
+
+#### 2. 重複した状態管理
+```javascript
+// ❌ Bad: Dual state without clear primary/fallback
+await chrome.storage.local.set({ data });
+await chrome.runtime.sendMessage({ data });
+// Which is authoritative?
+
+// ✅ Better: Documented primary + fallback
+// Primary: Message passing
+await chrome.runtime.sendMessage({ data });
+// Fallback: Storage for edge cases (documented in JSDoc)
+await chrome.storage.local.set({ data });
+```
+
+**理由**: Primary/Fallbackを明確に
+
+#### 3. エラーコンテキスト不足
+```javascript
+// ❌ Bad: Generic error
+console.error('Error:', error);
+
+// ✅ Better: Contextual error
+console.error('[SidePanel] displayMarkdown failed:', {
+  error: error.message,
+  metadata: data?.metadata?.title,
+  hasImages: data?.images?.length > 0
+});
+```
+
+**理由**: デバッグを容易に
+
+### 統合戦略
+
+#### Option 1: 統合PR（推奨）
+```
+Team A (Issue #25) ─┐
+Team B (Issue #26) ─┼→ Unified PR #31 → main
+Team C (Issue #27) ─┘
+```
+
+**利点**:
+- コンフリクト解決が容易
+- 一貫した統合テスト
+- クリーンな履歴
+
+#### Option 2: 個別PR
+```
+Team A → PR #29 → main
+Team B → PR #30 → main
+Team C → PR #31 → main
+```
+
+**利点**:
+- 独立したレビュー
+- 段階的マージ可能
+
+**欠点**:
+- コンフリクトリスク高
+- 統合テスト複雑
+
+### ドキュメント化基準
+
+#### agents.md に含めるべき内容:
+- チーム構造と責任
+- コミュニケーションプロトコル
+- 自律的意思決定ガイドライン
+- プロジェクト固有のルール
+
+#### CLAUDE.md に含めるべき内容:
+- 開発ワークフロー詳細
+- コード品質基準
+- アーキテクチャパターン
+- よくある落とし穴と解決策
+- 実装テンプレート
+
+---
+
+**最終更新日**: 2026-02-12
+**バージョン**: 0.3.0
+**ステータス**: 🟢 Phase 1-2完了 / 自律的開発プロセス確立
 **実装済み機能**:
 - ✅ Phase 1: MVP（コンテンツ抽出、Markdown変換、サイドパネルUI）
 - ✅ Phase 2: IndexedDB Storage（記事永続化、画像オフライン保存、CRUD操作）
+- ✅ Issue #24: Tab-specific SidePanel
+- ✅ Issue #25: Image display in SidePanel
+- ✅ Issue #26: View button fix when SidePanel already open
+- ✅ Issue #27: Unified data flow architecture
 - ✅ CI/CD: GitHub Actions（Jest, ESLint, セキュリティスキャン）
-- ✅ マニュアルテストガイド完備
+- ✅ マルチチーム自律開発プロセス確立
 
 **次の開発**: Phase 3 (ZIP Export) または Phase 4 (AI Translation)
