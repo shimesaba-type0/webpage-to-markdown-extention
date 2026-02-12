@@ -64,9 +64,14 @@ async function init() {
 
   // Check if we should auto-extract
   const shouldAutoExtract = await checkPendingExtraction();
-  if (shouldAutoExtract) {
+  if (shouldAutoExtract === true) {
+    // pendingExtraction flag was set, extract from current page
     extractContent();
+  } else if (shouldAutoExtract === false) {
+    // viewingArticle was found and displayed, do nothing
+    // (content is already shown by displayMarkdown)
   } else {
+    // No pending action, show empty state
     showEmptyState();
   }
 }
@@ -86,6 +91,7 @@ async function checkPendingExtraction() {
       displayMarkdown(result.viewingArticle);
       // Clear the storage
       await chrome.storage.local.remove('viewingArticle');
+      // Return false to indicate article was displayed (don't show empty state)
       return false;
     }
 
@@ -93,12 +99,14 @@ async function checkPendingExtraction() {
     const extractionResult = await chrome.storage.local.get('pendingExtraction');
     if (extractionResult.pendingExtraction) {
       await chrome.storage.local.remove('pendingExtraction');
+      // Return true to trigger extraction
       return true;
     }
   } catch (error) {
     console.error('[SidePanel] Storage check error:', error);
   }
-  return false;
+  // Return null to indicate no action needed (show empty state)
+  return null;
 }
 
 /**
