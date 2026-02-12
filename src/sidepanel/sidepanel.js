@@ -30,6 +30,7 @@ const retryBtn = document.getElementById('retry-btn');
 // State
 let currentMarkdown = '';
 let currentMetadata = null;
+let currentBlobUrls = []; // Store blob URLs for cleanup (Issue #25)
 
 // Initialize
 init();
@@ -78,15 +79,25 @@ async function init() {
 
 /**
  * Check if we should automatically extract content or load saved article
+ *
+ * Architecture (Issue #27):
+ * - Primary: Message-based communication (displayMarkdown action)
+ * - Fallback: storage.local flags for edge cases (SidePanel reopened, message missed)
+ *
+ * Returns:
+ * - true: Trigger auto-extraction (pendingExtraction flag set)
+ * - false: Article displayed from storage (viewingArticle fallback)
+ * - null: No action needed (show empty state)
  */
 async function checkPendingExtraction() {
   try {
-    // Check if there's a saved article to view
+    // FALLBACK: Check storage for article to view (in case message was missed)
+    // Primary flow: viewArticle() sends displayMarkdown message directly
     const result = await chrome.storage.local.get('viewingArticle');
     console.log('[SidePanel] Storage check result:', result);
 
     if (result.viewingArticle) {
-      console.log('[SidePanel] Found saved article to view:', result.viewingArticle);
+      console.log('[SidePanel] [FALLBACK] Loading article from storage:', result.viewingArticle.metadata?.title);
       // Load the saved article
       displayMarkdown(result.viewingArticle);
       // Clear the storage
@@ -95,9 +106,10 @@ async function checkPendingExtraction() {
       return false;
     }
 
-    // Otherwise check for pending extraction
+    // Check for pending extraction (Extract & Save flow)
     const extractionResult = await chrome.storage.local.get('pendingExtraction');
     if (extractionResult.pendingExtraction) {
+      console.log('[SidePanel] Pending extraction detected, auto-extracting');
       await chrome.storage.local.remove('pendingExtraction');
       // Return true to trigger extraction
       return true;
@@ -140,6 +152,21 @@ async function extractContent() {
 }
 
 /**
+ * Clean up blob URLs to prevent memory leaks (Issue #25)
+ */
+function cleanupBlobUrls() {
+  for (const url of currentBlobUrls) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.warn('[SidePanel] Failed to revoke blob URL:', url, error);
+    }
+  }
+  currentBlobUrls = [];
+  console.log('[SidePanel] Cleaned up blob URLs');
+}
+
+/**
  * Display markdown content
  */
 function displayMarkdown(data) {
@@ -151,7 +178,7 @@ function displayMarkdown(data) {
       throw new Error('No data provided to displayMarkdown');
     }
 
-    const { metadata, markdown } = data;
+    const { metadata, markdown, images = [] } = data;
 
     // Validate required fields
     if (!metadata) {
@@ -185,8 +212,42 @@ function displayMarkdown(data) {
       articleUrl.style.display = 'none';
     }
 
+    // Process images: Convert Blobs to URLs and replace paths (Issue #25)
+    let processedMarkdown = markdown;
+    if (images && images.length > 0) {
+      console.log(`[SidePanel] Processing ${images.length} images`);
+
+      // Clean up old blob URLs to prevent memory leaks
+      cleanupBlobUrls();
+
+      // Create blob URLs and build path mapping
+      const imageMap = {};
+      for (const img of images) {
+        if (img.blob && img.localPath) {
+          try {
+            const blobUrl = URL.createObjectURL(img.blob);
+            imageMap[img.localPath] = blobUrl;
+            currentBlobUrls.push(blobUrl);
+            console.log(`[SidePanel] Mapped ${img.localPath} → ${blobUrl}`);
+          } catch (error) {
+            console.error('[SidePanel] Failed to create blob URL for image:', img.localPath, error);
+          }
+        } else {
+          // Rev1 feedback: Log warning for invalid images
+          console.warn('[SidePanel] Skipping invalid image (missing blob or localPath):', img);
+        }
+      }
+
+      // Replace image paths in markdown
+      for (const [localPath, blobUrl] of Object.entries(imageMap)) {
+        processedMarkdown = processedMarkdown.replaceAll(localPath, blobUrl);
+      }
+
+      console.log(`[SidePanel] Replaced ${Object.keys(imageMap).length} image paths`);
+    }
+
     // Render markdown
-    renderMarkdown(markdown);
+    renderMarkdown(processedMarkdown);
 
     // Show content
     showContentView();
