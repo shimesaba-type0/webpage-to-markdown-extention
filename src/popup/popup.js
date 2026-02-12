@@ -311,19 +311,29 @@ async function viewArticle(articleId) {
     console.log('[Popup] Article metadata:', response.article.metadata);
     console.log('[Popup] Article markdown length:', response.article.markdown?.length);
 
-    // Store article data for side panel to load
-    const viewingArticle = {
-      metadata: response.article.metadata,
-      markdown: response.article.markdown
-    };
-
-    console.log('[Popup] Storing viewingArticle:', viewingArticle);
-
-    await chrome.storage.local.set({ viewingArticle });
-
-    // Open side panel
+    // Get active tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    // Open side panel (will do nothing if already open)
     await chrome.sidePanel.open({ windowId: tab.windowId });
+
+    // Send article data directly to SidePanel (Issue #26)
+    // This ensures content displays even when SidePanel is already open
+    setTimeout(async () => {
+      try {
+        await chrome.runtime.sendMessage({
+          action: 'displayMarkdown',
+          data: {
+            metadata: response.article.metadata,
+            markdown: response.article.markdown,
+            images: response.article.images || [] // Include images for display
+          }
+        });
+        console.log('[Popup] displayMarkdown message sent to SidePanel');
+      } catch (error) {
+        console.error('[Popup] Failed to send message to SidePanel:', error);
+      }
+    }, 500);
 
     // Close popup
     window.close();
