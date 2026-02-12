@@ -218,6 +218,13 @@ async function loadSavedArticles() {
               <circle cx="12" cy="12" r="3"></circle>
             </svg>
           </button>
+          <button class="action-btn export-btn" data-id="${article.id}" title="Export">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </button>
           <button class="action-btn delete-btn" data-id="${article.id}" title="Delete">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"></polyline>
@@ -234,6 +241,14 @@ async function loadSavedArticles() {
         e.stopPropagation();
         const articleId = parseInt(btn.dataset.id);
         viewArticle(articleId);
+      });
+    });
+
+    document.querySelectorAll('.export-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const articleId = parseInt(btn.dataset.id);
+        await exportArticle(articleId);
       });
     });
 
@@ -284,6 +299,29 @@ async function viewArticle(articleId) {
     window.close();
   } catch (error) {
     console.error('[Popup] View article error:', error);
+    showStatus(`✗ ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Export single article
+ */
+async function exportArticle(articleId) {
+  try {
+    showStatus('Exporting article...', 'loading');
+
+    const response = await chrome.runtime.sendMessage({
+      action: 'exportArticle',
+      articleId
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to export article');
+    }
+
+    showStatus(`✓ Exported: ${response.result.filename}`, 'success');
+  } catch (error) {
+    console.error('[Popup] Export article error:', error);
     showStatus(`✗ ${error.message}`, 'error');
   }
 }

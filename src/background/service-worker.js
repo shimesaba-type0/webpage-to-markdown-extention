@@ -3,10 +3,13 @@
  * Handles background tasks and message passing
  */
 
-/* global importScripts, storageManager, imageDownloader */
+/* global importScripts, storageManager, imageDownloader, fileExporter */
 
 // Import storage modules
 importScripts('../storage/storage-manager.js', '../storage/image-downloader.js');
+
+// Import export modules
+importScripts('../lib/jszip.min.js', '../export/file-exporter.js');
 
 console.log('[Service Worker] Starting...');
 
@@ -50,7 +53,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'exportAll') {
     handleExportAll()
-      .then(_result => sendResponse({ success: true }))
+      .then(result => sendResponse({ success: true, result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'exportArticle') {
+    handleExportArticle(request.articleId)
+      .then(result => sendResponse({ success: true, result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
@@ -198,12 +208,52 @@ async function handleExportAll() {
   try {
     console.log('[Service Worker] Export all articles');
 
-    // TODO Phase 3: Implement export
-    // - Get all articles from IndexedDB
-    // - Create ZIP with JSZip
-    // - Download ZIP file
+    // Get all articles from IndexedDB
+    const articles = await storageManager.getAllArticles();
 
-    throw new Error('Export feature coming in Phase 3');
+    if (articles.length === 0) {
+      throw new Error('No articles to export');
+    }
+
+    // Prepare articles data with images
+    const articlesData = [];
+    for (const article of articles) {
+      const images = await storageManager.getArticleImages(article.id);
+      articlesData.push({ article, images });
+    }
+
+    // Export as ZIP
+    const result = await fileExporter.exportMultipleArticles(articlesData);
+    console.log('[Service Worker] Export completed:', result);
+
+    return result;
+  } catch (error) {
+    console.error('[Service Worker] Export error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Handle export single article request
+ */
+async function handleExportArticle(articleId) {
+  try {
+    console.log('[Service Worker] Export article:', articleId);
+
+    // Get article from IndexedDB
+    const article = await storageManager.getArticle(articleId);
+    if (!article) {
+      throw new Error('Article not found');
+    }
+
+    // Get article images
+    const images = await storageManager.getArticleImages(articleId);
+
+    // Export as ZIP
+    const result = await fileExporter.exportArticle(article, images);
+    console.log('[Service Worker] Export completed:', result);
+
+    return result;
   } catch (error) {
     console.error('[Service Worker] Export error:', error);
     throw error;
