@@ -225,14 +225,21 @@ function renderMarkdown(markdown) {
 
     // Update views
     previewView.innerHTML = html;
-    markdownCode.textContent = markdown;
 
-    console.log('[SidePanel] Markdown rendered successfully');
-    console.log('[SidePanel] markdownCode.textContent length:', markdownCode.textContent?.length);
+    // Safely update markdown code view
+    if (markdownCode) {
+      markdownCode.textContent = markdown;
+      console.log('[SidePanel] Markdown rendered successfully');
+      console.log('[SidePanel] markdownCode.textContent length:', markdownCode.textContent?.length);
+    } else {
+      console.error('[SidePanel] markdownCode element not found!');
+    }
   } catch (error) {
     console.error('[SidePanel] Render error:', error);
     previewView.innerHTML = '<p>Error rendering markdown</p>';
-    markdownCode.textContent = markdown;
+    if (markdownCode) {
+      markdownCode.textContent = markdown;
+    }
   }
 }
 
