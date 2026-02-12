@@ -30,6 +30,7 @@ const retryBtn = document.getElementById('retry-btn');
 // State
 let currentMarkdown = '';
 let currentMetadata = null;
+let currentBlobUrls = []; // Store blob URLs for cleanup (Issue #25)
 
 // Initialize
 init();
@@ -140,6 +141,21 @@ async function extractContent() {
 }
 
 /**
+ * Clean up blob URLs to prevent memory leaks (Issue #25)
+ */
+function cleanupBlobUrls() {
+  for (const url of currentBlobUrls) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.warn('[SidePanel] Failed to revoke blob URL:', url, error);
+    }
+  }
+  currentBlobUrls = [];
+  console.log('[SidePanel] Cleaned up blob URLs');
+}
+
+/**
  * Display markdown content
  */
 function displayMarkdown(data) {
@@ -151,7 +167,7 @@ function displayMarkdown(data) {
       throw new Error('No data provided to displayMarkdown');
     }
 
-    const { metadata, markdown } = data;
+    const { metadata, markdown, images = [] } = data;
 
     // Validate required fields
     if (!metadata) {
@@ -185,8 +201,39 @@ function displayMarkdown(data) {
       articleUrl.style.display = 'none';
     }
 
+    // Process images: Convert Blobs to URLs and replace paths (Issue #25)
+    let processedMarkdown = markdown;
+    if (images && images.length > 0) {
+      console.log(`[SidePanel] Processing ${images.length} images`);
+
+      // Clean up old blob URLs to prevent memory leaks
+      cleanupBlobUrls();
+
+      // Create blob URLs and build path mapping
+      const imageMap = {};
+      for (const img of images) {
+        if (img.blob && img.localPath) {
+          try {
+            const blobUrl = URL.createObjectURL(img.blob);
+            imageMap[img.localPath] = blobUrl;
+            currentBlobUrls.push(blobUrl);
+            console.log(`[SidePanel] Mapped ${img.localPath} → ${blobUrl}`);
+          } catch (error) {
+            console.error('[SidePanel] Failed to create blob URL for image:', img.localPath, error);
+          }
+        }
+      }
+
+      // Replace image paths in markdown
+      for (const [localPath, blobUrl] of Object.entries(imageMap)) {
+        processedMarkdown = processedMarkdown.replaceAll(localPath, blobUrl);
+      }
+
+      console.log(`[SidePanel] Replaced ${Object.keys(imageMap).length} image paths`);
+    }
+
     // Render markdown
-    renderMarkdown(markdown);
+    renderMarkdown(processedMarkdown);
 
     // Show content
     showContentView();
