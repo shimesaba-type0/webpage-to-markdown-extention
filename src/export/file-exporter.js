@@ -109,15 +109,20 @@ class FileExporter {
 
   /**
    * Download blob as file using Chrome Downloads API
-   * Note: Uses FileReader to convert Blob to data URL for Service Worker compatibility
+   * Note: For Service Worker compatibility, converts ArrayBuffer to base64
    */
-  downloadBlob(blob, filename) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
+  async downloadBlob(blob, filename) {
+    try {
+      // Convert blob to array buffer
+      const arrayBuffer = await blob.arrayBuffer();
 
-      reader.onload = () => {
-        const dataUrl = reader.result;
+      // Convert to base64
+      const base64 = this.arrayBufferToBase64(arrayBuffer);
 
+      // Create data URL
+      const dataUrl = `data:${blob.type || 'application/octet-stream'};base64,${base64}`;
+
+      return new Promise((resolve, reject) => {
         chrome.downloads.download({
           url: dataUrl,
           filename,
@@ -132,15 +137,23 @@ class FileExporter {
           console.log('[FileExporter] Download started:', downloadId);
           resolve(downloadId);
         });
-      };
+      });
+    } catch (error) {
+      console.error('[FileExporter] downloadBlob error:', error);
+      throw error;
+    }
+  }
 
-      reader.onerror = () => {
-        console.error('[FileExporter] FileReader error:', reader.error);
-        reject(new Error('Failed to read blob'));
-      };
-
-      reader.readAsDataURL(blob);
-    });
+  /**
+   * Convert ArrayBuffer to Base64 string (Service Worker compatible)
+   */
+  arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
   }
 
   /**
