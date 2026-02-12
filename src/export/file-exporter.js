@@ -49,7 +49,7 @@ class FileExporter {
     const blob = await zip.generateAsync({ type: 'blob' });
 
     // Download
-    this.downloadBlob(blob, `${filename}.zip`);
+    await this.downloadBlob(blob, `${filename}.zip`);
 
     return { success: true, filename: `${filename}.zip` };
   }
@@ -102,34 +102,44 @@ class FileExporter {
     // Download with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
     const filename = `articles_export_${timestamp}.zip`;
-    this.downloadBlob(blob, filename);
+    await this.downloadBlob(blob, filename);
 
     return { success: true, filename, count: articlesData.length };
   }
 
   /**
    * Download blob as file using Chrome Downloads API
+   * Note: Uses FileReader to convert Blob to data URL for Service Worker compatibility
    */
   downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
 
-    chrome.downloads.download({
-      url,
-      filename,
-      saveAs: true
-    }, (downloadId) => {
-      if (chrome.runtime.lastError) {
-        console.error('[FileExporter] Download error:', chrome.runtime.lastError);
-        return;
-      }
+      reader.onload = () => {
+        const dataUrl = reader.result;
 
-      // Clean up URL after download completes
-      chrome.downloads.onChanged.addListener(function listener(delta) {
-        if (delta.id === downloadId && delta.state?.current === 'complete') {
-          URL.revokeObjectURL(url);
-          chrome.downloads.onChanged.removeListener(listener);
-        }
-      });
+        chrome.downloads.download({
+          url: dataUrl,
+          filename,
+          saveAs: true
+        }, (downloadId) => {
+          if (chrome.runtime.lastError) {
+            console.error('[FileExporter] Download error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+
+          console.log('[FileExporter] Download started:', downloadId);
+          resolve(downloadId);
+        });
+      };
+
+      reader.onerror = () => {
+        console.error('[FileExporter] FileReader error:', reader.error);
+        reject(new Error('Failed to read blob'));
+      };
+
+      reader.readAsDataURL(blob);
     });
   }
 

@@ -318,7 +318,24 @@ async function handleGetArticles() {
     const articles = await storageManager.getAllArticles();
     console.log(`[Service Worker] Retrieved ${articles.length} articles`);
 
-    return articles;
+    // Filter out corrupted articles with missing metadata
+    const validArticles = articles.filter(article => {
+      if (!article.metadata) {
+        console.warn('[Service Worker] Skipping article with missing metadata:', article.id);
+        return false;
+      }
+      if (article.markdown === undefined) {
+        console.warn('[Service Worker] Skipping article with missing markdown:', article.id);
+        return false;
+      }
+      return true;
+    });
+
+    if (validArticles.length < articles.length) {
+      console.warn(`[Service Worker] Filtered out ${articles.length - validArticles.length} corrupted articles`);
+    }
+
+    return validArticles;
   } catch (error) {
     console.error('[Service Worker] Get articles error:', error);
     throw error;
@@ -336,6 +353,17 @@ async function handleGetArticle(articleId) {
 
     if (!article) {
       throw new Error('Article not found');
+    }
+
+    // Validate article structure
+    if (!article.metadata) {
+      console.error('[Service Worker] Invalid article structure - missing metadata:', article);
+      throw new Error('Article data is corrupted: missing metadata');
+    }
+
+    if (article.markdown === undefined) {
+      console.error('[Service Worker] Invalid article structure - missing markdown:', article);
+      throw new Error('Article data is corrupted: missing markdown');
     }
 
     console.log('[Service Worker] Retrieved article:', article.metadata.title);

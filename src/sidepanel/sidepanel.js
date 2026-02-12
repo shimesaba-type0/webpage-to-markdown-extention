@@ -251,15 +251,32 @@ function downloadMarkdown() {
   try {
     const filename = generateFilename(currentMetadata);
     const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
 
-    chrome.downloads.download({
-      url: url,
-      filename: filename,
-      saveAs: true
-    });
+    // Convert blob to data URL for compatibility
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
 
-    showNotification('Download started');
+      chrome.downloads.download({
+        url: dataUrl,
+        filename: filename,
+        saveAs: true
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.error('[SidePanel] Download error:', chrome.runtime.lastError);
+          showNotification('Failed to download', 'error');
+          return;
+        }
+        showNotification('Download started');
+      });
+    };
+
+    reader.onerror = () => {
+      console.error('[SidePanel] FileReader error:', reader.error);
+      showNotification('Failed to download', 'error');
+    };
+
+    reader.readAsDataURL(blob);
   } catch (error) {
     console.error('[SidePanel] Download error:', error);
     showNotification('Failed to download', 'error');
