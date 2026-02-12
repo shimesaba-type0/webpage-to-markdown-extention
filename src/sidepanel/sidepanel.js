@@ -195,6 +195,15 @@ function displayMarkdown(data) {
  */
 function renderMarkdown(markdown) {
   try {
+    console.log('[SidePanel] renderMarkdown called with markdown length:', markdown?.length);
+
+    if (!markdown) {
+      console.warn('[SidePanel] Markdown is empty or undefined');
+      previewView.innerHTML = '<p>No content to display</p>';
+      markdownCode.textContent = '';
+      return;
+    }
+
     // Configure marked options
     marked.setOptions({
       breaks: true,
@@ -209,6 +218,9 @@ function renderMarkdown(markdown) {
     // Update views
     previewView.innerHTML = html;
     markdownCode.textContent = markdown;
+
+    console.log('[SidePanel] Markdown rendered successfully');
+    console.log('[SidePanel] markdownCode.textContent length:', markdownCode.textContent?.length);
   } catch (error) {
     console.error('[SidePanel] Render error:', error);
     previewView.innerHTML = '<p>Error rendering markdown</p>';
