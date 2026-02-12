@@ -64,28 +64,49 @@ async function init() {
 
   // Check if we should auto-extract
   const shouldAutoExtract = await checkPendingExtraction();
-  if (shouldAutoExtract) {
+  if (shouldAutoExtract === true) {
+    // pendingExtraction flag was set, extract from current page
     extractContent();
+  } else if (shouldAutoExtract === false) {
+    // viewingArticle was found and displayed, do nothing
+    // (content is already shown by displayMarkdown)
   } else {
+    // No pending action, show empty state
     showEmptyState();
   }
 }
 
 /**
- * Check if we should automatically extract content
+ * Check if we should automatically extract content or load saved article
  */
 async function checkPendingExtraction() {
-  // Check if there's a pending extraction request
   try {
-    const result = await chrome.storage.local.get('pendingExtraction');
-    if (result.pendingExtraction) {
+    // Check if there's a saved article to view
+    const result = await chrome.storage.local.get('viewingArticle');
+    console.log('[SidePanel] Storage check result:', result);
+
+    if (result.viewingArticle) {
+      console.log('[SidePanel] Found saved article to view:', result.viewingArticle);
+      // Load the saved article
+      displayMarkdown(result.viewingArticle);
+      // Clear the storage
+      await chrome.storage.local.remove('viewingArticle');
+      // Return false to indicate article was displayed (don't show empty state)
+      return false;
+    }
+
+    // Otherwise check for pending extraction
+    const extractionResult = await chrome.storage.local.get('pendingExtraction');
+    if (extractionResult.pendingExtraction) {
       await chrome.storage.local.remove('pendingExtraction');
+      // Return true to trigger extraction
       return true;
     }
   } catch (error) {
     console.error('[SidePanel] Storage check error:', error);
   }
-  return false;
+  // Return null to indicate no action needed (show empty state)
+  return null;
 }
 
 /**
@@ -106,7 +127,9 @@ async function extractContent() {
     const result = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
 
     if (result.success && result.data) {
-      displayMarkdown(result.data);
+      // Extract metadata and markdown from the response
+      const { metadata, markdown } = result.data;
+      displayMarkdown({ metadata, markdown });
     } else {
       throw new Error(result.error || 'Extraction failed');
     }
@@ -121,7 +144,22 @@ async function extractContent() {
  */
 function displayMarkdown(data) {
   try {
+    console.log('[SidePanel] displayMarkdown called with data:', data);
+
+    // Validate data structure
+    if (!data) {
+      throw new Error('No data provided to displayMarkdown');
+    }
+
     const { metadata, markdown } = data;
+
+    // Validate required fields
+    if (!metadata) {
+      throw new Error('metadata is undefined in data: ' + JSON.stringify(data));
+    }
+    if (markdown === undefined) {
+      throw new Error('markdown is undefined in data');
+    }
 
     currentMarkdown = markdown;
     currentMetadata = metadata;
@@ -165,6 +203,15 @@ function displayMarkdown(data) {
  */
 function renderMarkdown(markdown) {
   try {
+    console.log('[SidePanel] renderMarkdown called with markdown length:', markdown?.length);
+
+    if (!markdown) {
+      console.warn('[SidePanel] Markdown is empty or undefined');
+      previewView.innerHTML = '<p>No content to display</p>';
+      markdownCode.textContent = '';
+      return;
+    }
+
     // Configure marked options
     marked.setOptions({
       breaks: true,
@@ -178,11 +225,21 @@ function renderMarkdown(markdown) {
 
     // Update views
     previewView.innerHTML = html;
-    markdownCode.textContent = markdown;
+
+    // Safely update markdown code view
+    if (markdownCode) {
+      markdownCode.textContent = markdown;
+      console.log('[SidePanel] Markdown rendered successfully');
+      console.log('[SidePanel] markdownCode.textContent length:', markdownCode.textContent?.length);
+    } else {
+      console.error('[SidePanel] markdownCode element not found!');
+    }
   } catch (error) {
     console.error('[SidePanel] Render error:', error);
     previewView.innerHTML = '<p>Error rendering markdown</p>';
-    markdownCode.textContent = markdown;
+    if (markdownCode) {
+      markdownCode.textContent = markdown;
+    }
   }
 }
 
@@ -223,15 +280,32 @@ function downloadMarkdown() {
   try {
     const filename = generateFilename(currentMetadata);
     const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
 
-    chrome.downloads.download({
-      url: url,
-      filename: filename,
-      saveAs: true
-    });
+    // Convert blob to data URL for compatibility
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
 
-    showNotification('Download started');
+      chrome.downloads.download({
+        url: dataUrl,
+        filename: filename,
+        saveAs: true
+      }, (_downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.error('[SidePanel] Download error:', chrome.runtime.lastError);
+          showNotification('Failed to download', 'error');
+          return;
+        }
+        showNotification('Download started');
+      });
+    };
+
+    reader.onerror = () => {
+      console.error('[SidePanel] FileReader error:', reader.error);
+      showNotification('Failed to download', 'error');
+    };
+
+    reader.readAsDataURL(blob);
   } catch (error) {
     console.error('[SidePanel] Download error:', error);
     showNotification('Failed to download', 'error');

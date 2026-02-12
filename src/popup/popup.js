@@ -81,9 +81,10 @@ async function handleExtract() {
 
         // Send data to side panel
         setTimeout(async () => {
+          const { metadata, markdown } = result.data;
           await chrome.runtime.sendMessage({
             action: 'displayMarkdown',
-            data: result.data
+            data: { metadata, markdown }
           });
         }, 500);
 
@@ -289,28 +290,40 @@ async function loadSavedArticles() {
  */
 async function viewArticle(articleId) {
   try {
+    console.log('[Popup] viewArticle called with ID:', articleId);
+
     // Get article data
     const response = await chrome.runtime.sendMessage({
       action: 'getArticle',
       articleId
     });
 
+    console.log('[Popup] getArticle response:', response);
+
     if (!response.success) {
       throw new Error(response.error || 'Failed to get article');
     }
 
-    // Open side panel with article
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    await chrome.storage.local.set({ pendingExtraction: true });
-    await chrome.sidePanel.open({ windowId: tab.windowId });
+    if (!response.article) {
+      throw new Error('Article data is empty');
+    }
 
-    // Send article data to side panel
-    setTimeout(async () => {
-      await chrome.runtime.sendMessage({
-        action: 'displayMarkdown',
-        data: response.article
-      });
-    }, 500);
+    console.log('[Popup] Article metadata:', response.article.metadata);
+    console.log('[Popup] Article markdown length:', response.article.markdown?.length);
+
+    // Store article data for side panel to load
+    const viewingArticle = {
+      metadata: response.article.metadata,
+      markdown: response.article.markdown
+    };
+
+    console.log('[Popup] Storing viewingArticle:', viewingArticle);
+
+    await chrome.storage.local.set({ viewingArticle });
+
+    // Open side panel
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    await chrome.sidePanel.open({ windowId: tab.windowId });
 
     // Close popup
     window.close();

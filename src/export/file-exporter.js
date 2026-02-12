@@ -49,7 +49,7 @@ class FileExporter {
     const blob = await zip.generateAsync({ type: 'blob' });
 
     // Download
-    this.downloadBlob(blob, `${filename}.zip`);
+    await this.downloadBlob(blob, `${filename}.zip`);
 
     return { success: true, filename: `${filename}.zip` };
   }
@@ -102,35 +102,58 @@ class FileExporter {
     // Download with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
     const filename = `articles_export_${timestamp}.zip`;
-    this.downloadBlob(blob, filename);
+    await this.downloadBlob(blob, filename);
 
     return { success: true, filename, count: articlesData.length };
   }
 
   /**
    * Download blob as file using Chrome Downloads API
+   * Note: For Service Worker compatibility, converts ArrayBuffer to base64
    */
-  downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
+  async downloadBlob(blob, filename) {
+    try {
+      // Convert blob to array buffer
+      const arrayBuffer = await blob.arrayBuffer();
 
-    chrome.downloads.download({
-      url,
-      filename,
-      saveAs: true
-    }, (downloadId) => {
-      if (chrome.runtime.lastError) {
-        console.error('[FileExporter] Download error:', chrome.runtime.lastError);
-        return;
-      }
+      // Convert to base64
+      const base64 = this.arrayBufferToBase64(arrayBuffer);
 
-      // Clean up URL after download completes
-      chrome.downloads.onChanged.addListener(function listener(delta) {
-        if (delta.id === downloadId && delta.state?.current === 'complete') {
-          URL.revokeObjectURL(url);
-          chrome.downloads.onChanged.removeListener(listener);
-        }
+      // Create data URL
+      const dataUrl = `data:${blob.type || 'application/octet-stream'};base64,${base64}`;
+
+      return new Promise((resolve, reject) => {
+        chrome.downloads.download({
+          url: dataUrl,
+          filename,
+          saveAs: true
+        }, (downloadId) => {
+          if (chrome.runtime.lastError) {
+            console.error('[FileExporter] Download error:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+
+          console.log('[FileExporter] Download started:', downloadId);
+          resolve(downloadId);
+        });
       });
-    });
+    } catch (error) {
+      console.error('[FileExporter] downloadBlob error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Convert ArrayBuffer to Base64 string (Service Worker compatible)
+   */
+  arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
   }
 
   /**
