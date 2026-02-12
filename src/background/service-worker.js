@@ -373,7 +373,12 @@ async function handleGetArticle(articleId) {
 
     console.log('[Service Worker] Retrieved article:', article.metadata.title);
 
-    return article;
+    // Get associated images from IndexedDB (Issue #25)
+    const images = await storageManager.getArticleImages(articleId);
+    console.log(`[Service Worker] Retrieved ${images.length} images for article`);
+
+    // Return article with images
+    return { ...article, images };
   } catch (error) {
     console.error('[Service Worker] Get article error:', error);
     throw error;
