@@ -290,7 +290,7 @@ function downloadMarkdown() {
         url: dataUrl,
         filename: filename,
         saveAs: true
-      }, (downloadId) => {
+      }, (_downloadId) => {
         if (chrome.runtime.lastError) {
           console.error('[SidePanel] Download error:', chrome.runtime.lastError);
           showNotification('Failed to download', 'error');
