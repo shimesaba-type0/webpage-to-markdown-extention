@@ -314,6 +314,14 @@ async function viewArticle(articleId) {
     // Get active tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
+    // Store article data as fallback for SidePanel init() (Rev2 feedback)
+    const viewingArticle = {
+      metadata: response.article.metadata,
+      markdown: response.article.markdown,
+      images: response.article.images || []
+    };
+    await chrome.storage.local.set({ viewingArticle });
+
     // Open side panel (will do nothing if already open)
     await chrome.sidePanel.open({ windowId: tab.windowId });
 
@@ -323,20 +331,16 @@ async function viewArticle(articleId) {
       try {
         await chrome.runtime.sendMessage({
           action: 'displayMarkdown',
-          data: {
-            metadata: response.article.metadata,
-            markdown: response.article.markdown,
-            images: response.article.images || [] // Include images for display
-          }
+          data: viewingArticle
         });
         console.log('[Popup] displayMarkdown message sent to SidePanel');
       } catch (error) {
         console.error('[Popup] Failed to send message to SidePanel:', error);
+      } finally {
+        // Close popup after message is sent (Rev2 feedback)
+        window.close();
       }
     }, 500);
-
-    // Close popup
-    window.close();
   } catch (error) {
     console.error('[Popup] View article error:', error);
     showStatus(`✗ ${error.message}`, 'error');
