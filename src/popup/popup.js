@@ -81,9 +81,10 @@ async function handleExtract() {
 
         // Send data to side panel
         setTimeout(async () => {
+          const { metadata, markdown } = result.data;
           await chrome.runtime.sendMessage({
             action: 'displayMarkdown',
-            data: result.data
+            data: { metadata, markdown }
           });
         }, 500);
 

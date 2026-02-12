@@ -119,7 +119,9 @@ async function extractContent() {
     const result = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
 
     if (result.success && result.data) {
-      displayMarkdown(result.data);
+      // Extract metadata and markdown from the response
+      const { metadata, markdown } = result.data;
+      displayMarkdown({ metadata, markdown });
     } else {
       throw new Error(result.error || 'Extraction failed');
     }

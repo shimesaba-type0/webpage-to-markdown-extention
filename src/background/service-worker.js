@@ -42,7 +42,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'saveArticle') {
     handleSaveArticle(request.data)
-      .then(result => sendResponse({ success: true, articleId: result }))
+      .then(result => sendResponse({ success: true, ...result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true; // Indicates async response
   }
@@ -161,7 +161,12 @@ async function handleSaveArticle(data) {
 
     console.log('[Service Worker] Article saved with ID:', articleId);
 
-    return articleId;
+    // Return article data for immediate use
+    return {
+      articleId,
+      metadata,
+      markdown: updatedMarkdown
+    };
   } catch (error) {
     console.error('[Service Worker] Save article error:', error);
     throw error;
