@@ -73,23 +73,35 @@ async function handleExtract() {
 
       // Open side panel and send data
       try {
-        // Set flag to indicate we want to display content
+        // Set flag as fallback (Issue #27: Architecture unification)
+        // Primary: Direct message passing
+        // Fallback: pendingExtraction flag if SidePanel not ready
         await chrome.storage.local.set({ pendingExtraction: true });
 
         // Open side panel
         await chrome.sidePanel.open({ windowId: tab.windowId });
 
-        // Send data to side panel
+        // Send data directly to SidePanel (primary flow)
         setTimeout(async () => {
-          const { metadata, markdown } = result.data;
-          await chrome.runtime.sendMessage({
-            action: 'displayMarkdown',
-            data: { metadata, markdown }
-          });
+          try {
+            const { metadata, markdown, articleId } = result.data;
+            await chrome.runtime.sendMessage({
+              action: 'displayMarkdown',
+              data: {
+                metadata,
+                markdown,
+                images: result.data.images || [], // Integration with Team A (Issue #25)
+                articleId
+              }
+            });
+            console.log('[Popup] displayMarkdown message sent to SidePanel');
+          } catch (error) {
+            console.error('[Popup] Failed to send message to SidePanel:', error);
+          } finally {
+            // Close popup after message is sent (Rev2 pattern)
+            window.close();
+          }
         }, 500);
-
-        // Close popup
-        window.close();
       } catch (error) {
         console.error('[Popup] Side panel error:', error);
         // Fallback: just show success
