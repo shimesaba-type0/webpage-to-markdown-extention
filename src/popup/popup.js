@@ -299,18 +299,17 @@ async function viewArticle(articleId) {
       throw new Error(response.error || 'Failed to get article');
     }
 
-    // Open side panel with article
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    await chrome.storage.local.set({ pendingExtraction: true });
-    await chrome.sidePanel.open({ windowId: tab.windowId });
+    // Store article data for side panel to load
+    await chrome.storage.local.set({
+      viewingArticle: {
+        metadata: response.article.metadata,
+        markdown: response.article.markdown
+      }
+    });
 
-    // Send article data to side panel
-    setTimeout(async () => {
-      await chrome.runtime.sendMessage({
-        action: 'displayMarkdown',
-        data: response.article
-      });
-    }, 500);
+    // Open side panel
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    await chrome.sidePanel.open({ windowId: tab.windowId });
 
     // Close popup
     window.close();
