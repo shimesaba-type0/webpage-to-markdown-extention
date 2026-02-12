@@ -185,14 +185,208 @@ Claude Code（あなた）がこのプロジェクトを開発する際の指針
 
 ## 次のステップ
 
-現在のフェーズ: **Phase 1 完了 ✅**
+現在のフェーズ: **Phase 2 完了 ✅**
+
+完了したフェーズ:
+1. ✅ Phase 1: MVP - 基本的なコンテンツ抽出とMarkdown変換
+2. ✅ サイドパネルUI実装 - Chrome Side Panel API統合
+3. ✅ Phase 2: IndexedDB Storage - 記事の永続化と画像オフライン保存
 
 次にやること:
-1. ✅ `agents.md` 作成（このファイル）
-2. ✅ `claude.md` 作成
-3. ✅ プロジェクト構造の作成（ディレクトリ、ファイル）
-4. ✅ Phase 1: MVPの実装完了
-5. ⏳ Phase 2: ストレージ機能の実装
+1. Phase 3: ZIP Export（IndexedDBから記事を取得してエクスポート）
+2. Phase 4: AI Translation（Anthropic API統合）
+
+---
+
+## Phase 2 実装から得られた知見（重要）
+
+### IndexedDB実装のベストプラクティス
+
+**1. Object Storeの設計**
+```javascript
+// 複数のストアを使用して関連データを分離
+- articles: { id, metadata, markdown, imageCount, hasTranslation, ... }
+- images: { id, articleId, originalUrl, blob, mimeType, localPath, ... }
+
+// インデックスは頻繁にクエリするフィールドに作成
+- articles: timestamp, url, title でインデックス
+- images: articleId, originalUrl でインデックス
+```
+
+**2. Service WorkerでのimportScripts**
+```javascript
+// 先頭にグローバル変数を宣言
+/* global importScripts, storageManager, imageDownloader */
+
+// スクリプトをインポート
+importScripts('../storage/storage-manager.js', '../storage/image-downloader.js');
+
+// これにより、Service Worker内でモジュールを使用可能
+```
+
+**3. 画像のBlob保存**
+```javascript
+// fetch() → Blob → IndexedDBの流れ
+const response = await fetch(imageUrl);
+const blob = await response.blob();
+const mimeType = response.headers.get('content-type');
+
+// Blobを直接IndexedDBに保存可能（structuredClone対応）
+await imageStore.add({ blob, mimeType, ... });
+```
+
+**4. トランザクション管理**
+```javascript
+// 複数ストアへのアクセスは1つのトランザクションで
+const transaction = db.transaction(['articles', 'images'], 'readwrite');
+const articleStore = transaction.objectStore('articles');
+const imageStore = transaction.objectStore('images');
+
+// transaction.oncomplete で全体の完了を待つ
+transaction.oncomplete = () => resolve();
+```
+
+### Chrome Side Panel API統合の知見
+
+**1. manifest.jsonの設定**
+```json
+{
+  "permissions": ["sidePanel"],
+  "side_panel": {
+    "default_path": "src/sidepanel/sidepanel.html"
+  }
+}
+```
+
+**2. サイドパネルを開く**
+```javascript
+// Popup UIからサイドパネルを開く
+await chrome.sidePanel.open({ windowId: tab.windowId });
+
+// ペンディング状態をストレージに保存して、サイドパネルに通知
+await chrome.storage.local.set({ pendingExtraction: true });
+```
+
+**3. メッセージング**
+```javascript
+// Service Worker → Side Panelへのメッセージ転送
+chrome.runtime.sendMessage({ action: 'displayMarkdown', data })
+```
+
+### テストとCI/CD
+
+**1. ESLintの設定**
+```javascript
+// .eslintignore でサードパーティライブラリを除外
+src/lib/
+
+// グローバル変数の宣言
+/* global chrome, importScripts, storageManager */
+```
+
+**2. GitHub Actions CI**
+```yaml
+jobs:
+  test:        # Jest + ESLint
+  validate:    # manifest.json検証
+  security:    # npm audit + シークレットスキャン
+```
+
+**3. ブランチ保護**
+- ブランチ名: `claude/<feature>-<sessionID>`
+- Required status checks: CI passing
+- 自動マージ可能（テスト合格後）
+
+### 並列開発の実践
+
+**成功パターン:**
+1. **インターフェース優先設計**: StorageManagerのAPIを先に定義
+2. **モック使用**: Phase 3/4はモックStorageManagerで並列開発可能
+3. **独立したモジュール**: 各モジュールは独自のファイルで完結
+
+**失敗パターン:**
+1. ブランチ名の誤り（`claude/`プレフィックスと`-DYKEg`サフィックス必須）
+2. Service Workerでのモジュール読み込み（require不可、importScripts使用）
+3. Blobの扱い（structuredClone対応型のみIndexedDBに保存可）
+
+### パフォーマンス最適化
+
+**画像ダウンロード:**
+```javascript
+// 並列ダウンロードだがメモリ効率を考慮
+for (const url of imageUrls) {
+  const imageData = await downloadImage(url);  // 順次処理
+  // 並列にすると大量の画像でメモリ不足の可能性
+}
+```
+
+**IndexedDB クエリ:**
+```javascript
+// cursorで大量データを効率的に処理
+const request = index.openCursor(null, 'prev');  // 降順
+request.onsuccess = (event) => {
+  const cursor = event.target.result;
+  if (cursor) {
+    articles.push(cursor.value);
+    cursor.continue();
+  }
+};
+```
+
+---
+
+## 開発から得られた技術的教訓
+
+### Chrome Extension開発
+
+1. **Service WorkerとContent Scriptの違い**
+   - Service Worker: バックグラウンド処理、永続化、API呼び出し
+   - Content Script: ページDOM操作、コンテンツ抽出
+   - 通信: `chrome.runtime.sendMessage()`
+
+2. **Manifest V3の制約**
+   - インラインスクリプト禁止
+   - `eval()`禁止
+   - Service Workerでのモジュール: `importScripts()`のみ
+
+3. **権限管理**
+   - 最小権限の原則
+   - `host_permissions: ["<all_urls>"]` は画像ダウンロードに必須
+
+### IndexedDB詳細
+
+1. **バージョン管理**
+   ```javascript
+   const DB_VERSION = 1;  // スキーマ変更時にインクリメント
+   request.onupgradeneeded = (event) => {
+     // マイグレーション処理
+   };
+   ```
+
+2. **エラーハンドリング**
+   ```javascript
+   // 必ず両方実装
+   transaction.oncomplete = () => resolve();
+   transaction.onerror = () => reject(transaction.error);
+   ```
+
+3. **データ型**
+   - Blob, File, ArrayBuffer: ✅ 保存可能
+   - Function, Symbol: ❌ 保存不可
+
+### UI/UX設計
+
+1. **状態管理**
+   - Loading, Error, Empty, Content の4状態を明確に分離
+   - ユーザーフィードバックは即座に表示
+
+2. **アクセシビリティ**
+   - ボタンに`title`属性
+   - エラーメッセージは具体的に
+
+3. **レスポンシブデザイン**
+   - サイドパネルは固定幅
+   - ポップアップは最小幅に
 
 ---
 
@@ -341,5 +535,12 @@ git commit -m "Merge: Resolve conflicts with main"
 ---
 
 **最終更新日**: 2026-02-11
-**バージョン**: 0.1.0
-**ステータス**: 🟢 Phase 1完了 / Phase 2-4開発準備中
+**バージョン**: 0.2.0
+**ステータス**: 🟢 Phase 1-2完了 / Phase 3-4開発準備完了
+**実装済み機能**:
+- ✅ Phase 1: MVP（コンテンツ抽出、Markdown変換、サイドパネルUI）
+- ✅ Phase 2: IndexedDB Storage（記事永続化、画像オフライン保存、CRUD操作）
+- ✅ CI/CD: GitHub Actions（Jest, ESLint, セキュリティスキャン）
+- ✅ マニュアルテストガイド完備
+
+**次の開発**: Phase 3 (ZIP Export) または Phase 4 (AI Translation)
