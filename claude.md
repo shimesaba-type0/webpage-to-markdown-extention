@@ -307,19 +307,29 @@ echo ".vscode/" >> .gitignore
 - プッシュ時は `git push -u origin claude/configure-branch-protection-DYKEg`
 - 最後にプルリクエストを作成してmainにマージ
 
-## 次のアクション
+## 完了したアクション
 
 1. ✅ `agents.md` 作成完了
 2. ✅ `claude.md` 作成完了（このファイル）
-3. ⏳ プロジェクト構造の作成
-   - ディレクトリ作成
-   - .gitignore更新
-   - 外部ライブラリのダウンロード
-4. ⏳ Phase 1: MVP実装開始
+3. ✅ プロジェクト構造の作成
+4. ✅ Phase 1: MVP実装完了（PR #2）
    - manifest.json
-   - アイコン（仮）
-   - Content script
+   - サイドパネルUI (Chrome Side Panel API)
+   - Content script（Readability + Turndown）
    - Popup UI
+5. ✅ Phase 2: IndexedDB Storage実装完了（PR #10）
+   - StorageManager（CRUD操作）
+   - ImageDownloader（画像オフライン保存）
+   - Service Worker統合
+   - Popup UI拡張（記事一覧、View/Delete）
+
+## 次のアクション
+
+**選択可能なフェーズ:**
+- Phase 3: ZIP Export（`getAllArticles()` + JSZip）
+- Phase 4: AI Translation（Anthropic API + `saveTranslation()`）
+
+どちらも並列開発可能（Phase 2のStorageManager完成により）
 
 ## Claude Codeへの指示
 
@@ -333,6 +343,119 @@ echo ".vscode/" >> .gitignore
 
 ---
 
+## Phase 2 実装の重要な学び
+
+### Service Workerでのモジュール読み込み
+
+**正しい方法:**
+```javascript
+/* global importScripts, storageManager, imageDownloader */
+importScripts('../storage/storage-manager.js', '../storage/image-downloader.js');
+
+// これでstorageManager, imageDownloaderが使用可能
+const articles = await storageManager.getAllArticles();
+```
+
+**間違った方法:**
+```javascript
+// ❌ Service Workerでは使えない
+import { storageManager } from './storage-manager.js';
+const storageManager = require('./storage-manager.js');
+```
+
+### IndexedDB のBlob保存
+
+**ポイント:**
+1. Blobは直接IndexedDBに保存可能（structuredClone対応）
+2. 画像URLではなくBlob自体を保存することでオフライン対応
+3. mimeTypeも一緒に保存してData URLへの変換を容易に
+
+```javascript
+// 保存
+const response = await fetch(imageUrl);
+const blob = await response.blob();
+await imageStore.add({
+  blob,  // Blobを直接保存
+  mimeType: response.headers.get('content-type'),
+  originalUrl: imageUrl
+});
+
+// 読み込みとData URL変換
+const imageData = await imageStore.get(id);
+const dataUrl = await blobToDataURL(imageData.blob);
+```
+
+### Chrome Side Panel API
+
+**設定のポイント:**
+1. manifest.jsonに`"sidePanel"`パーミッション追加
+2. `side_panel.default_path`を指定
+3. `chrome.sidePanel.open({ windowId })`で開く
+4. メッセージングで Popup ↔ Side Panel 通信
+
+### ブランチ命名規則（重要！）
+
+**必須フォーマット:**
+```
+claude/<feature-name>-<sessionID>
+```
+
+**例:**
+- ✅ `claude/phase2-storage-DYKEg`
+- ✅ `claude/side-panel-ui-DYKEg`
+- ❌ `feature/phase2-storage` （プッシュ時403エラー）
+
+**理由:**
+- GitHubのブランチ保護ルールが`claude/`プレフィックスを要求
+- セッションID サフィックスでセッション識別
+
+### CI/CD統合
+
+**GitHub Actions ワークフロー:**
+```yaml
+jobs:
+  test:      # npm run lint && npm test
+  validate:  # manifest.json検証、必須ファイルチェック
+  security:  # npm audit、シークレットスキャン
+```
+
+**ESLint設定:**
+- `.eslintignore`でサードパーティライブラリを除外
+- グローバル変数は`/* global ... */`で宣言
+- `no-unused-vars`は`_`プレフィックスで無視可能
+
+### 並列開発の実現
+
+**成功した戦略:**
+1. **インターフェース優先**: StorageManagerのAPIを先に定義
+2. **モック準備**: Phase 3/4用のモックStorageManager作成可能
+3. **独立モジュール**: 各機能は独自ファイルで完結
+
+**依存関係:**
+```
+Phase 1 (MVP)
+    ↓
+Phase 2 (Storage) ← 完了 ✅
+    ├→ Phase 3 (ZIP Export)    ← storageManager.getAllArticles()使用
+    └→ Phase 4 (Translation)   ← storageManager.saveTranslation()使用
+```
+
+### パフォーマンス考慮事項
+
+**画像ダウンロード:**
+- 大量の画像は順次ダウンロード（メモリ節約）
+- 各画像10秒タイムアウト
+- エラーは個別に処理（一部失敗でも継続）
+
+**IndexedDB クエリ:**
+- 大量データは`cursor`使用
+- インデックスで高速化（timestamp, url, title）
+- トランザクションは必要最小限のストアのみ
+
+---
+
 **最終更新日**: 2026-02-11
 **作成者**: shimesaba-type0
 **Claude Code Version**: Sonnet 4.5
+**実装完了フェーズ**: Phase 1-2 ✅
+**次期開発**: Phase 3 または Phase 4

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown Preview</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="sidepanel-container">
+    <!-- Header -->
+    <header class="sidepanel-header">
+      <h1>Markdown Preview</h1>
+      <div class="header-actions">
+        <button id="copy-btn" class="icon-btn" title="Copy Markdown">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </button>
+        <button id="download-btn" class="icon-btn" title="Download Markdown">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </button>
+        <button id="toggle-view-btn" class="icon-btn active" title="Toggle View Mode">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="sidepanel-content">
+      <!-- Loading State -->
+      <div id="loading-state" class="state-message">
+        <div class="spinner"></div>
+        <p>Extracting content...</p>
+      </div>
+
+      <!-- Error State -->
+      <div id="error-state" class="state-message hidden">
+        <div class="error-icon">⚠️</div>
+        <h2>Failed to extract content</h2>
+        <p id="error-message"></p>
+        <button id="retry-btn" class="primary-btn">Retry</button>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="state-message hidden">
+        <div class="empty-icon">📄</div>
+        <h2>No content yet</h2>
+        <p>Click the extension icon and select "Extract" to convert the current page to Markdown.</p>
+      </div>
+
+      <!-- Content View -->
+      <div id="content-view" class="hidden">
+        <!-- Metadata Section -->
+        <div id="metadata-section" class="metadata">
+          <h1 id="article-title"></h1>
+          <div class="meta-info">
+            <span id="article-author" class="meta-item"></span>
+            <span id="article-date" class="meta-item"></span>
+            <a id="article-url" class="meta-item meta-link" target="_blank"></a>
+          </div>
+        </div>
+
+        <!-- View Tabs -->
+        <div class="view-tabs">
+          <button id="preview-tab" class="tab-btn active">Preview</button>
+          <button id="markdown-tab" class="tab-btn">Markdown</button>
+        </div>
+
+        <!-- Preview View (Rendered HTML) -->
+        <div id="preview-view" class="markdown-content"></div>
+
+        <!-- Markdown View (Raw Text) -->
+        <div id="markdown-view" class="markdown-source hidden">
+          <pre><code id="markdown-code"></code></pre>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../lib/marked.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
