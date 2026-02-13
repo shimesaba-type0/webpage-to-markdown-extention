@@ -82,6 +82,11 @@ async function extractContent() {
 
 /**
  * Extract image information from HTML content
+ *
+ * Enhancement (Issue #37):
+ * - Support lazy-loading images (data-src, data-lazy-src, data-original)
+ * - Support srcset for high-resolution images
+ * - Improved image filtering
  */
 function extractImages(htmlContent) {
   const tempDiv = document.createElement('div');
@@ -91,11 +96,17 @@ function extractImages(htmlContent) {
   const images = [];
 
   imgElements.forEach(img => {
-    let src = img.getAttribute('src');
+    // Enhanced image source extraction (Issue #37)
+    let src = getImageSource(img);
 
     // Convert relative URLs to absolute
     if (src && !src.startsWith('http') && !src.startsWith('data:')) {
-      src = new URL(src, window.location.href).href;
+      try {
+        src = new URL(src, window.location.href).href;
+      } catch (error) {
+        console.warn('[Content Script] Invalid image URL:', src, error);
+        return;
+      }
     }
 
     // Skip data URLs and very small images (likely icons)
@@ -118,6 +129,70 @@ function extractImages(htmlContent) {
   });
 
   return images;
+}
+
+/**
+ * Get image source from element (Issue #37)
+ * Checks multiple attributes in priority order:
+ * 1. srcset (highest resolution)
+ * 2. data-src (lazy loading)
+ * 3. data-lazy-src (LazyLoad library)
+ * 4. data-original (some image libraries)
+ * 5. src (standard)
+ */
+function getImageSource(imgElement) {
+  // Priority 1: srcset (select highest resolution)
+  const srcset = imgElement.getAttribute('srcset');
+  if (srcset) {
+    try {
+      const sources = parseSrcset(srcset);
+      if (sources.length > 0) {
+        // Return highest resolution image
+        return sources[sources.length - 1].url;
+      }
+    } catch (error) {
+      console.warn('[Content Script] Failed to parse srcset:', srcset, error);
+    }
+  }
+
+  // Priority 2-4: Lazy loading attributes
+  const lazyAttributes = ['data-src', 'data-lazy-src', 'data-original'];
+  for (const attr of lazyAttributes) {
+    const lazySrc = imgElement.getAttribute(attr);
+    if (lazySrc) {
+      console.log(`[Content Script] Using ${attr} for lazy-loaded image`);
+      return lazySrc;
+    }
+  }
+
+  // Priority 5: Standard src
+  return imgElement.getAttribute('src');
+}
+
+/**
+ * Parse srcset attribute (Issue #37)
+ * Format: "url1 1x, url2 2x" or "url1 100w, url2 200w"
+ *
+ * @param {string} srcset - srcset attribute value
+ * @returns {Array} Sorted array of {url, descriptor}
+ */
+function parseSrcset(srcset) {
+  const sources = srcset.split(',').map(source => {
+    const parts = source.trim().split(/\s+/);
+    return {
+      url: parts[0],
+      descriptor: parts[1] || '1x'
+    };
+  });
+
+  // Sort by descriptor (lower to higher resolution)
+  sources.sort((a, b) => {
+    const aVal = parseFloat(a.descriptor) || 1;
+    const bVal = parseFloat(b.descriptor) || 1;
+    return aVal - bVal;
+  });
+
+  return sources;
 }
 
 /**
