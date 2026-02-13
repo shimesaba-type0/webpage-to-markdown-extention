@@ -92,17 +92,37 @@ class StorageManager {
 
   /**
    * Get an article by ID
+   *
+   * Bug Fix (Issue #63):
+   * - Validate ID parameter to prevent IndexedDB errors
+   * - Ensure ID is a valid positive number
    */
   async getArticle(id) {
     await this.init();
+
+    // Validate ID parameter (Issue #63)
+    if (!id || typeof id !== 'number' || isNaN(id) || id <= 0) {
+      throw new Error(`Invalid article ID for getArticle: ${id} (type: ${typeof id})`);
+    }
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_ARTICLES], 'readonly');
       const store = transaction.objectStore(STORE_ARTICLES);
       const request = store.get(id);
 
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const article = request.result;
+        console.log(`[StorageManager] getArticle(${id}):`, article ? 'found' : 'not found');
+        resolve(article);
+      };
+
+      request.onerror = () => {
+        console.error('[StorageManager] getArticle error:', {
+          id,
+          error: request.error
+        });
+        reject(request.error);
+      };
     });
   }
 
@@ -139,9 +159,17 @@ class StorageManager {
 
   /**
    * Delete an article by ID
+   *
+   * Bug Fix (Issue #63):
+   * - Validate ID parameter to prevent IndexedDB errors
    */
   async deleteArticle(id) {
     await this.init();
+
+    // Validate ID parameter (Issue #63)
+    if (!id || typeof id !== 'number' || isNaN(id) || id <= 0) {
+      throw new Error(`Invalid article ID for deleteArticle: ${id} (type: ${typeof id})`);
+    }
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_ARTICLES, STORE_IMAGES], 'readwrite');
@@ -206,9 +234,17 @@ class StorageManager {
 
   /**
    * Get all images for an article
+   *
+   * Bug Fix (Issue #63):
+   * - Validate articleId parameter to prevent IndexedDB errors
    */
   async getArticleImages(articleId) {
     await this.init();
+
+    // Validate articleId parameter (Issue #63)
+    if (!articleId || typeof articleId !== 'number' || isNaN(articleId) || articleId <= 0) {
+      throw new Error(`Invalid article ID for getArticleImages: ${articleId} (type: ${typeof articleId})`);
+    }
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_IMAGES], 'readonly');
@@ -223,9 +259,17 @@ class StorageManager {
 
   /**
    * Update article with translation
+   *
+   * Bug Fix (Issue #63):
+   * - Validate articleId parameter to prevent IndexedDB errors
    */
   async saveTranslation(articleId, translatedMarkdown) {
     await this.init();
+
+    // Validate articleId parameter (Issue #63)
+    if (!articleId || typeof articleId !== 'number' || isNaN(articleId) || articleId <= 0) {
+      throw new Error(`Invalid article ID for saveTranslation: ${articleId} (type: ${typeof articleId})`);
+    }
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_ARTICLES], 'readwrite');
