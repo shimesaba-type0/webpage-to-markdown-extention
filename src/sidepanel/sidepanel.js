@@ -27,10 +27,17 @@ const copyBtn = document.getElementById('copy-btn');
 const downloadBtn = document.getElementById('download-btn');
 const retryBtn = document.getElementById('retry-btn');
 
+// View Controls (Issue #51)
+const reloadBtn = document.getElementById('reload-btn');
+const fontSelect = document.getElementById('font-select');
+const fontDecreaseBtn = document.getElementById('font-decrease-btn');
+const fontIncreaseBtn = document.getElementById('font-increase-btn');
+
 // State
 let currentMarkdown = '';
 let currentMetadata = null;
 let currentBlobUrls = []; // Store blob URLs for cleanup (Issue #25)
+let currentFontSize = 100; // Percentage (Issue #51)
 
 // Initialize
 init();
@@ -47,6 +54,15 @@ async function init() {
   copyBtn.addEventListener('click', copyMarkdown);
   downloadBtn.addEventListener('click', downloadMarkdown);
   retryBtn.addEventListener('click', extractContent);
+
+  // View controls event listeners (Issue #51)
+  reloadBtn.addEventListener('click', reloadCurrentArticle);
+  fontSelect.addEventListener('change', handleFontChange);
+  fontDecreaseBtn.addEventListener('click', () => adjustFontSize(-10));
+  fontIncreaseBtn.addEventListener('click', () => adjustFontSize(10));
+
+  // Load saved view preferences (Issue #51)
+  loadViewPreferences();
 
   // Listen for messages from content script or popup
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -464,6 +480,103 @@ function hideAllStates() {
   errorState.classList.add('hidden');
   emptyState.classList.add('hidden');
   contentView.classList.add('hidden');
+}
+
+/**
+ * Reload current article (Issue #51)
+ * Re-displays the currently loaded article
+ */
+function reloadCurrentArticle() {
+  if (!currentMarkdown || !currentMetadata) {
+    console.warn('[SidePanel] No article loaded to reload');
+    return;
+  }
+
+  console.log('[SidePanel] Reloading current article');
+
+  // Re-display the current article
+  displayMarkdown({
+    metadata: currentMetadata,
+    markdown: currentMarkdown
+  });
+}
+
+/**
+ * Handle font family change (Issue #51)
+ */
+function handleFontChange(event) {
+  const fontFamily = event.target.value;
+  console.log('[SidePanel] Changing font to:', fontFamily);
+
+  // Apply font to markdown content
+  applyFontFamily(fontFamily);
+
+  // Save preference
+  localStorage.setItem('sidepanel-font-family', fontFamily);
+}
+
+/**
+ * Apply font family to markdown content (Issue #51)
+ */
+function applyFontFamily(fontFamily) {
+  const fontMap = {
+    'default': '',
+    'serif': '"Georgia", "Times New Roman", serif',
+    'sans-serif': '"Segoe UI", "Helvetica Neue", Arial, sans-serif',
+    'monospace': '"Consolas", "Monaco", "Courier New", monospace'
+  };
+
+  const fontValue = fontMap[fontFamily] || '';
+
+  if (fontValue) {
+    previewView.style.fontFamily = fontValue;
+    markdownView.style.fontFamily = fontValue;
+  } else {
+    previewView.style.fontFamily = '';
+    markdownView.style.fontFamily = '';
+  }
+}
+
+/**
+ * Adjust font size (Issue #51)
+ * @param {number} delta - Amount to change (e.g., +10 or -10)
+ */
+function adjustFontSize(delta) {
+  const minSize = 80;
+  const maxSize = 150;
+
+  currentFontSize = Math.max(minSize, Math.min(maxSize, currentFontSize + delta));
+
+  console.log('[SidePanel] Font size adjusted to:', currentFontSize + '%');
+
+  // Apply font size
+  previewView.style.fontSize = currentFontSize + '%';
+  markdownView.style.fontSize = currentFontSize + '%';
+
+  // Save preference
+  localStorage.setItem('sidepanel-font-size', currentFontSize.toString());
+}
+
+/**
+ * Load saved view preferences (Issue #51)
+ */
+function loadViewPreferences() {
+  // Load font family
+  const savedFont = localStorage.getItem('sidepanel-font-family');
+  if (savedFont) {
+    fontSelect.value = savedFont;
+    applyFontFamily(savedFont);
+  }
+
+  // Load font size
+  const savedSize = localStorage.getItem('sidepanel-font-size');
+  if (savedSize) {
+    currentFontSize = parseInt(savedSize, 10);
+    previewView.style.fontSize = currentFontSize + '%';
+    markdownView.style.fontSize = currentFontSize + '%';
+  }
+
+  console.log('[SidePanel] Loaded view preferences:', { font: savedFont || 'default', size: currentFontSize + '%' });
 }
 
 console.log('[SidePanel] Script loaded');

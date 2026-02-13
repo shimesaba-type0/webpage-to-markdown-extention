@@ -75,6 +75,32 @@
           <button id="markdown-tab" class="tab-btn">Markdown</button>
         </div>
 
+        <!-- View Controls (Issue #51) -->
+        <div class="view-controls">
+          <button id="reload-btn" class="control-btn" title="Reload current article">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            Reload
+          </button>
+          <div class="control-group">
+            <label for="font-select">Font:</label>
+            <select id="font-select" class="control-select">
+              <option value="default">Default</option>
+              <option value="serif">Serif</option>
+              <option value="sans-serif">Sans-serif</option>
+              <option value="monospace">Monospace</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Size:</label>
+            <button id="font-decrease-btn" class="control-btn-small" title="Decrease font size">A-</button>
+            <button id="font-increase-btn" class="control-btn-small" title="Increase font size">A+</button>
+          </div>
+        </div>
+
         <!-- Preview View (Rendered HTML) -->
         <div id="preview-view" class="markdown-content"></div>
 
