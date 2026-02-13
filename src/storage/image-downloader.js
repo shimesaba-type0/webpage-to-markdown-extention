@@ -75,6 +75,11 @@ class ImageDownloader {
 
   /**
    * Update markdown with local image paths
+   *
+   * Bug Fix (Issue #44):
+   * - Previous regex approach failed with URLs containing special characters
+   * - Use simple string replacement for more reliable URL substitution
+   * - Handle both standard markdown format and plain URLs
    */
   updateMarkdownImagePaths(markdown, imageMapping) {
     let updatedMarkdown = markdown;
@@ -82,8 +87,21 @@ class ImageDownloader {
     for (const [originalUrl, localPath] of Object.entries(imageMapping)) {
       // Replace image URLs in markdown
       // Format: ![alt](url)
-      const regex = new RegExp(`!\\[([^\\]]*)\\]\\(${this.escapeRegex(originalUrl)}\\)`, 'g');
-      updatedMarkdown = updatedMarkdown.replace(regex, `![$1](${localPath})`);
+
+      // Method 1: Simple string replacement (more reliable than regex)
+      // This handles URLs with query parameters, special characters, etc.
+      const markdownImage = `](${originalUrl})`;
+      const replacement = `](${localPath})`;
+
+      // Replace all occurrences
+      updatedMarkdown = updatedMarkdown.split(markdownImage).join(replacement);
+
+      // Method 2: Also replace plain URLs (in case markdown doesn't use standard format)
+      // This is a fallback for edge cases
+      if (updatedMarkdown.includes(originalUrl) && !updatedMarkdown.includes(localPath)) {
+        console.warn('[ImageDownloader] URL still found after standard replacement, attempting fallback:', originalUrl);
+        updatedMarkdown = updatedMarkdown.split(originalUrl).join(localPath);
+      }
     }
 
     return updatedMarkdown;
