@@ -30,7 +30,8 @@ async function loadSettings() {
     preserveOriginal: true,
     translationPrompt: DEFAULT_TRANSLATION_PROMPT,
     includeMetadata: true,
-    autoTranslate: false
+    autoTranslate: false,
+    downloadImages: false  // Issue #38: Default to disabled for user consent
   });
 
   document.getElementById('enable-translation').checked = settings.enableTranslation;
@@ -39,6 +40,7 @@ async function loadSettings() {
   document.getElementById('translation-prompt').value = settings.translationPrompt;
   document.getElementById('include-metadata').checked = settings.includeMetadata;
   document.getElementById('auto-translate').checked = settings.autoTranslate;
+  document.getElementById('download-images').checked = settings.downloadImages;
 }
 
 async function saveSettings() {
@@ -48,7 +50,8 @@ async function saveSettings() {
     preserveOriginal: document.getElementById('preserve-original').checked,
     translationPrompt: document.getElementById('translation-prompt').value,
     includeMetadata: document.getElementById('include-metadata').checked,
-    autoTranslate: document.getElementById('auto-translate').checked
+    autoTranslate: document.getElementById('auto-translate').checked,
+    downloadImages: document.getElementById('download-images').checked  // Issue #38
   };
 
   await chrome.storage.sync.set(settings);

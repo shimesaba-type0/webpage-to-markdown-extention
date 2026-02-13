@@ -26,7 +26,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       enableTranslation: false,
       preserveOriginal: true,
       includeMetadata: true,
-      autoTranslate: false
+      autoTranslate: false,
+      downloadImages: false  // Issue #38: Default disabled for user consent
     });
 
     console.log('[Service Worker] Default settings initialized');
@@ -106,6 +107,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  * - Primary: Use image data from content-script (metadata.images)
  * - Fallback: Extract from markdown for backward compatibility
  * - This ensures images are reliably captured and stored
+ *
+ * User Consent (Issue #38):
+ * - Check downloadImages setting before downloading
+ * - Default is disabled (requires explicit user consent)
+ * - Respects copyright and terms of service concerns
  */
 async function handleSaveArticle(data) {
   try {
@@ -113,31 +119,38 @@ async function handleSaveArticle(data) {
 
     const { metadata, markdown } = data;
 
-    // Primary: Extract image URLs from metadata (Issue #36)
-    let imageUrls = [];
-    if (metadata.images && Array.isArray(metadata.images)) {
-      imageUrls = metadata.images
-        .map(img => img.src)
-        .filter(src => src && !src.startsWith('data:'));
-      console.log(`[Service Worker] Extracted ${imageUrls.length} images from metadata`);
-    }
-
-    // Fallback: Extract from markdown if no images in metadata
-    if (imageUrls.length === 0) {
-      imageUrls = imageDownloader.extractImageUrls(markdown);
-      console.log(`[Service Worker] [FALLBACK] Extracted ${imageUrls.length} images from markdown`);
-    }
-
-    // Remove duplicates
-    imageUrls = Array.from(new Set(imageUrls));
-    console.log(`[Service Worker] Total unique images to download: ${imageUrls.length}`);
+    // Check user consent for image download (Issue #38)
+    const settings = await chrome.storage.sync.get({ downloadImages: false });
 
     // Download images
     let downloadedImages = [];
     let updatedMarkdown = markdown;
     let imageMapping = {};
 
-    if (imageUrls.length > 0) {
+    if (!settings.downloadImages) {
+      console.log('[Service Worker] Image download disabled by user (Issue #38)');
+      // Skip image download, save article without images
+    } else {
+      // Primary: Extract image URLs from metadata (Issue #36)
+      let imageUrls = [];
+      if (metadata.images && Array.isArray(metadata.images)) {
+        imageUrls = metadata.images
+          .map(img => img.src)
+          .filter(src => src && !src.startsWith('data:'));
+        console.log(`[Service Worker] Extracted ${imageUrls.length} images from metadata`);
+      }
+
+      // Fallback: Extract from markdown if no images in metadata
+      if (imageUrls.length === 0) {
+        imageUrls = imageDownloader.extractImageUrls(markdown);
+        console.log(`[Service Worker] [FALLBACK] Extracted ${imageUrls.length} images from markdown`);
+      }
+
+      // Remove duplicates
+      imageUrls = Array.from(new Set(imageUrls));
+      console.log(`[Service Worker] Total unique images to download: ${imageUrls.length}`);
+
+      if (imageUrls.length > 0) {
       try {
         downloadedImages = await imageDownloader.downloadImages(imageUrls);
         console.log(`[Service Worker] Downloaded ${downloadedImages.filter(i => i.success).length} images`);
@@ -155,6 +168,7 @@ async function handleSaveArticle(data) {
       } catch (error) {
         console.error('[Service Worker] Image download error:', error);
         // Continue without images
+      }
       }
     }
 
