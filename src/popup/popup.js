@@ -327,6 +327,12 @@ async function loadSavedArticles() {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const articleId = parseInt(btn.dataset.id);
+        // Validate articleId before calling translateArticle (Issue #63)
+        if (isNaN(articleId) || articleId <= 0) {
+          console.error('[Popup] Invalid article ID for translation:', btn.dataset.id);
+          showStatus('Error: Invalid article ID', 'error');
+          return;
+        }
         await translateArticle(articleId);
       });
     });
@@ -429,9 +435,18 @@ async function viewArticle(articleId) {
 
 /**
  * Translate single article
+ *
+ * Bug Fix (Issue #63):
+ * - Validate articleId to prevent IndexedDB errors
+ * - Ensure articleId is a valid positive number
  */
 async function translateArticle(articleId) {
   try {
+    // Validate articleId (Issue #63: Defense in depth)
+    if (!articleId || isNaN(articleId) || articleId <= 0) {
+      throw new Error(`Invalid article ID: ${articleId}`);
+    }
+
     showStatus('Translating article...', 'loading');
 
     const response = await chrome.runtime.sendMessage({

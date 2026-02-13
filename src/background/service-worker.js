@@ -211,9 +211,21 @@ async function handleSaveArticle(data) {
  * Handle translate article request
  * Phase 4: Implement translation with Anthropic API
  */
+/**
+ * Translate article with AI
+ *
+ * Bug Fix (Issue #63):
+ * - Validate articleId to prevent IndexedDB errors
+ * - Add type checking for defense in depth
+ */
 async function handleTranslateArticle(articleId) {
   try {
     console.log('[Service Worker] Translate article:', articleId);
+
+    // Validate articleId (Issue #63: Defense in depth)
+    if (!articleId || typeof articleId !== 'number' || isNaN(articleId) || articleId <= 0) {
+      throw new Error(`Invalid article ID: ${articleId} (type: ${typeof articleId})`);
+    }
 
     // Get settings
     const settings = await chrome.storage.sync.get({
@@ -281,7 +293,12 @@ async function handleTranslateArticle(articleId) {
       originalPreserved: settings.preserveOriginal
     };
   } catch (error) {
-    console.error('[Service Worker] Translation error:', error);
+    // Enhanced error logging (Issue #63)
+    console.error('[Service Worker] Translation error:', {
+      articleId,
+      error: error.message,
+      stack: error.stack
+    });
     throw error;
   }
 }
