@@ -101,6 +101,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 /**
  * Handle save article request
  * Phase 2: Implement IndexedDB storage with image downloads
+ *
+ * Architecture Decision (Issue #36):
+ * - Primary: Use image data from content-script (metadata.images)
+ * - Fallback: Extract from markdown for backward compatibility
+ * - This ensures images are reliably captured and stored
  */
 async function handleSaveArticle(data) {
   try {
@@ -108,9 +113,24 @@ async function handleSaveArticle(data) {
 
     const { metadata, markdown } = data;
 
-    // Extract image URLs from markdown
-    const imageUrls = imageDownloader.extractImageUrls(markdown);
-    console.log(`[Service Worker] Found ${imageUrls.length} images to download`);
+    // Primary: Extract image URLs from metadata (Issue #36)
+    let imageUrls = [];
+    if (metadata.images && Array.isArray(metadata.images)) {
+      imageUrls = metadata.images
+        .map(img => img.src)
+        .filter(src => src && !src.startsWith('data:'));
+      console.log(`[Service Worker] Extracted ${imageUrls.length} images from metadata`);
+    }
+
+    // Fallback: Extract from markdown if no images in metadata
+    if (imageUrls.length === 0) {
+      imageUrls = imageDownloader.extractImageUrls(markdown);
+      console.log(`[Service Worker] [FALLBACK] Extracted ${imageUrls.length} images from markdown`);
+    }
+
+    // Remove duplicates
+    imageUrls = Array.from(new Set(imageUrls));
+    console.log(`[Service Worker] Total unique images to download: ${imageUrls.length}`);
 
     // Download images
     let downloadedImages = [];
