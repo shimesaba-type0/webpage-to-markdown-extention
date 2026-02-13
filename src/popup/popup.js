@@ -11,12 +11,14 @@ const exportAllBtn = document.getElementById('export-all-btn');
 const statusEl = document.getElementById('status');
 const articleListEl = document.getElementById('article-list');
 const articleCountEl = document.getElementById('article-count');
+const downloadImagesToggle = document.getElementById('download-images-toggle');
 
 // Event Listeners
 extractBtn.addEventListener('click', handleExtract);
 translateBtn.addEventListener('click', handleTranslate);
 settingsBtn.addEventListener('click', openSettings);
 exportAllBtn.addEventListener('click', exportAll);
+downloadImagesToggle.addEventListener('change', handleDownloadImagesToggle);
 
 // Initialize popup
 init();
@@ -29,13 +31,17 @@ async function init() {
 
   // Load settings
   const settings = await chrome.storage.sync.get({
-    enableTranslation: false
+    enableTranslation: false,
+    downloadImages: false
   });
 
   // Show/hide translation button based on settings
   if (settings.enableTranslation) {
     translateBtn.style.display = 'flex';
   }
+
+  // Set download images toggle state (Issue #44 UX improvement)
+  downloadImagesToggle.checked = settings.downloadImages;
 
   // Load saved articles (placeholder for Phase 2)
   loadSavedArticles();
@@ -199,6 +205,37 @@ async function exportAll() {
   } catch (error) {
     console.error('[Popup] Export error:', error);
     showStatus(`✗ ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Handle download images toggle change
+ *
+ * UX Improvement (Issue #44):
+ * - Make image download setting more discoverable in popup
+ * - Previously only available in Options page
+ * - Users were confused why images weren't downloading
+ */
+async function handleDownloadImagesToggle() {
+  try {
+    const isEnabled = downloadImagesToggle.checked;
+
+    // Save setting to sync storage
+    await chrome.storage.sync.set({ downloadImages: isEnabled });
+
+    console.log('[Popup] Download images setting updated:', isEnabled);
+
+    // Show feedback to user
+    if (isEnabled) {
+      showStatus('✓ Image download enabled', 'success');
+    } else {
+      showStatus('Image download disabled', 'info');
+    }
+  } catch (error) {
+    console.error('[Popup] Failed to save download images setting:', error);
+    showStatus('✗ Failed to save setting', 'error');
+    // Revert checkbox state on error
+    downloadImagesToggle.checked = !downloadImagesToggle.checked;
   }
 }
 
