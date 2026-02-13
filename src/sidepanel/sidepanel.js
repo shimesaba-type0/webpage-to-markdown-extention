@@ -123,6 +123,11 @@ async function checkPendingExtraction() {
 
 /**
  * Extract content from current tab
+ *
+ * Bug Fix (Issue #45):
+ * - Check if content script is available before sending message
+ * - Provide user-friendly error messages for different failure scenarios
+ * - Handle restricted pages (chrome://, about:, extension://) gracefully
  */
 async function extractContent() {
   try {
@@ -133,6 +138,20 @@ async function extractContent() {
 
     if (!tab || !tab.id) {
       throw new Error('No active tab found');
+    }
+
+    // Check if tab URL is restricted (Issue #45)
+    const restrictedProtocols = ['chrome:', 'about:', 'chrome-extension:', 'edge:', 'file:'];
+    if (restrictedProtocols.some(protocol => tab.url?.startsWith(protocol))) {
+      throw new Error('Cannot extract from system pages. Please navigate to a regular webpage.');
+    }
+
+    // Check if content script is ready (Issue #45)
+    try {
+      await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
+    } catch (error) {
+      // Content script not available
+      throw new Error('Content script not loaded. Please refresh the page and try again.');
     }
 
     // Send extract command to content script
