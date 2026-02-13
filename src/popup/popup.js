@@ -78,7 +78,7 @@ async function handleExtract() {
         // Fallback: pendingExtraction flag if SidePanel not ready
         await chrome.storage.local.set({ pendingExtraction: true });
 
-        // Configure side panel to be tab-specific (Issue #24)
+        // Configure side panel to be tab-specific (Issue #24, #43)
         // This ensures the panel only appears for this tab and closes when tab is closed
         if (chrome.sidePanel && chrome.sidePanel.setOptions) {
           await chrome.sidePanel.setOptions({
@@ -88,8 +88,9 @@ async function handleExtract() {
           });
         }
 
-        // Open side panel
-        await chrome.sidePanel.open({ windowId: tab.windowId });
+        // Open side panel for this specific tab (Issue #43)
+        // Using tabId instead of windowId for better tab-specific behavior
+        await chrome.sidePanel.open({ tabId: tab.id });
 
         // Send data directly to SidePanel (primary flow)
         setTimeout(async () => {
@@ -344,7 +345,7 @@ async function viewArticle(articleId) {
     };
     await chrome.storage.local.set({ viewingArticle });
 
-    // Configure side panel to be tab-specific (Issue #24)
+    // Configure side panel to be tab-specific (Issue #24, #43)
     // This ensures the panel only appears for this tab and closes when tab is closed
     if (chrome.sidePanel && chrome.sidePanel.setOptions) {
       await chrome.sidePanel.setOptions({
@@ -354,8 +355,9 @@ async function viewArticle(articleId) {
       });
     }
 
-    // Open side panel (will do nothing if already open)
-    await chrome.sidePanel.open({ windowId: tab.windowId });
+    // Open side panel for this specific tab (Issue #43)
+    // Using tabId instead of windowId for better tab-specific behavior
+    await chrome.sidePanel.open({ tabId: tab.id });
 
     // Send article data directly to SidePanel (Issue #26)
     // This ensures content displays even when SidePanel is already open
