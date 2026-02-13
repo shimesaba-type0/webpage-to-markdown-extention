@@ -1099,6 +1099,170 @@ async function refactoredFunction(param) {
 
 ---
 
+## プロジェクト固有の設定
+
+### プロジェクト情報
+
+**プロジェクト名**: Webpage to Markdown Extension
+**リポジトリ**: `webpage-to-markdown-extention`
+**言語**: JavaScript (ES6+)
+**プラットフォーム**: Chrome Extensions (Manifest V3)
+
+### 実装フェーズ
+
+#### Phase 1: MVP (完了 ✅)
+- manifest.json
+- サイドパネルUI (Chrome Side Panel API)
+- Content script（Readability + Turndown）
+- Popup UI
+
+#### Phase 2: IndexedDB Storage (完了 ✅)
+- StorageManager（CRUD操作）
+- ImageDownloader（画像オフライン保存）
+- Service Worker統合
+- Popup UI拡張（記事一覧、View/Delete）
+
+#### Phase 3: ZIP Export（実装可能）
+- `getAllArticles()` + JSZip
+- Markdown + 画像をZIP形式でエクスポート
+
+#### Phase 4: AI Translation（実装可能）
+- Anthropic API統合
+- 原文と翻訳の両方保存
+- カスタム翻訳プロンプト
+
+### 外部ライブラリ
+
+#### 1. Mozilla Readability
+**URL**: https://raw.githubusercontent.com/mozilla/readability/main/Readability.js
+**保存先**: `src/lib/Readability.js`
+
+```bash
+curl -o src/lib/Readability.js https://raw.githubusercontent.com/mozilla/readability/main/Readability.js
+```
+
+#### 2. Turndown.js
+**URL**: https://unpkg.com/turndown@7.1.2/dist/turndown.js
+**保存先**: `src/lib/turndown.js`
+
+```bash
+curl -o src/lib/turndown.js https://unpkg.com/turndown@7.1.2/dist/turndown.js
+```
+
+#### 3. JSZip
+**URL**: https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
+**保存先**: `src/lib/jszip.min.js`
+
+```bash
+curl -o src/lib/jszip.min.js https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js
+```
+
+### 翻訳機能の要件（Phase 4）
+
+#### 必須機能
+1. **翻訳ON/OFFスイッチ**: 設定画面とポップアップUIに配置、デフォルトはOFF
+2. **原文と翻訳の両方保存**: IndexedDBで管理、UI上で切り替え可能
+3. **APIキー設定**: Chrome Storage Syncに安全に保存、パスワード形式で表示
+4. **カスタム翻訳プロンプト**: デフォルトプロンプト提供、設定画面で編集可能
+
+#### デフォルト翻訳プロンプト
+
+```
+以下のMarkdown形式のテキストを日本語に翻訳してください。
+
+要件:
+- Markdown記法はそのまま保持してください
+- 見出し、リスト、コードブロック、リンクなどのフォーマットを維持してください
+- 自然で読みやすい日本語に翻訳してください
+- 技術用語は適切に日本語化してください（例: "function" → "関数"）
+- URLやリンクは変更しないでください
+- 画像の参照パス（例: ./images/xxx.jpg）は変更しないでください
+- コードブロック内のコードは翻訳しないでください
+
+翻訳対象テキスト:
+{content}
+```
+
+### セキュリティチェックリスト
+
+- [ ] APIキーはChrome Storage Syncに暗号化保存
+- [ ] ユーザー入力は必ずサニタイズ
+- [ ] `innerHTML` の代わりに `textContent` を使用（XSS対策）
+- [ ] Content Security Policyに準拠（インラインスクリプト禁止）
+- [ ] 外部リソース読み込み時のHTTPSチェック
+
+### Chrome Side Panel API の重要ポイント
+
+#### manifest.json設定
+```json
+{
+  "permissions": ["sidePanel"],
+  "side_panel": {
+    "default_path": "src/sidepanel/sidepanel.html"
+  }
+}
+```
+
+#### タブ固有SidePanel（Issue #24）
+```javascript
+// Chrome 116+ でタブごとに独立したSidePanelを設定
+await chrome.sidePanel.setOptions({
+  tabId: tab.id,
+  path: 'src/sidepanel/sidepanel.html',
+  enabled: true
+});
+await chrome.sidePanel.open({ tabId: tab.id });
+```
+
+### Service Worker モジュール読み込み
+
+**正しい方法:**
+```javascript
+/* global importScripts, storageManager, imageDownloader */
+importScripts('../storage/storage-manager.js', '../storage/image-downloader.js');
+```
+
+**間違った方法:**
+```javascript
+// ❌ Service Workerでは使えない
+import { storageManager } from './storage-manager.js';
+```
+
+### ブランチ命名規則（重要！）
+
+**必須フォーマット:**
+```
+claude/<feature-name>-<sessionID>
+```
+
+**例:**
+- ✅ `claude/phase2-storage-DYKEg`
+- ✅ `claude/enable-clickable-links-sidepanel-DYKEg`
+- ❌ `feature/phase2-storage` （プッシュ時403エラー）
+
+**理由:**
+- GitHubのブランチ保護ルールが`claude/`プレフィックスを要求
+- セッションID サフィックスでセッション識別
+
+### パフォーマンス最適化
+
+#### 画像処理
+- 並列ダウンロード数: 最大5
+- タイムアウト: 10秒/画像
+- サイズ制限: 10MB/画像（超えた場合は警告）
+
+#### 翻訳API
+- レート制限: セクション間500ms待機
+- リトライ: 失敗時に3回まで再試行
+- タイムアウト: 30秒/リクエスト
+
+#### IndexedDB
+- トランザクションのバッチ処理
+- インデックスの最適化（url, timestamp）
+- 大量データは`cursor`使用
+
+---
+
 ## まとめ
 
 本ドキュメントで定義した開発ワークフローとベストプラクティスに従うことで、以下が実現できます:
@@ -1150,5 +1314,5 @@ async function refactoredFunction(param) {
 
 ---
 
-**最終更新**: 2024-01-XX
-**バージョン**: 0.1.0
+**最終更新**: 2026-02-13
+**バージョン**: 0.2.0 (Issue #58 - claude.md統合)
