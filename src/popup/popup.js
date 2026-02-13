@@ -62,6 +62,13 @@ async function handleExtract() {
       throw new Error('No active tab found');
     }
 
+    // Check if tab URL is restricted (Issue #52: Improve error handling)
+    // Similar to Issue #45 fix in sidepanel.js
+    const restrictedProtocols = ['chrome:', 'about:', 'chrome-extension:', 'edge:', 'file:'];
+    if (restrictedProtocols.some(protocol => tab.url?.startsWith(protocol))) {
+      throw new Error('Cannot extract from system pages. Please navigate to a regular webpage.');
+    }
+
     // Check if content script is ready
     try {
       await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
