@@ -156,10 +156,13 @@ async function extractContent() {
       throw new Error('No active tab found');
     }
 
-    // Check if tab URL is restricted (Issue #45)
+    // Check if tab URL is restricted (Issue #52: UX improvement)
+    // For restricted pages, silently do nothing (no error message)
     const restrictedProtocols = ['chrome:', 'about:', 'chrome-extension:', 'edge:', 'file:'];
     if (restrictedProtocols.some(protocol => tab.url?.startsWith(protocol))) {
-      throw new Error('Cannot extract from system pages. Please navigate to a regular webpage.');
+      console.log('[SidePanel] Restricted page detected, skipping extraction:', tab.url);
+      showEmptyState(); // Show empty state instead of error
+      return; // Silently exit
     }
 
     // Check if content script is ready (Issue #45)

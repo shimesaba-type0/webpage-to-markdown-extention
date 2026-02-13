@@ -62,11 +62,13 @@ async function handleExtract() {
       throw new Error('No active tab found');
     }
 
-    // Check if tab URL is restricted (Issue #52: Improve error handling)
-    // Similar to Issue #45 fix in sidepanel.js
+    // Check if tab URL is restricted (Issue #52: UX improvement)
+    // For restricted pages, silently do nothing (no error message, no side panel)
     const restrictedProtocols = ['chrome:', 'about:', 'chrome-extension:', 'edge:', 'file:'];
     if (restrictedProtocols.some(protocol => tab.url?.startsWith(protocol))) {
-      throw new Error('Cannot extract from system pages. Please navigate to a regular webpage.');
+      console.log('[Popup] Restricted page detected, skipping extraction:', tab.url);
+      hideStatus();
+      return; // Silently exit
     }
 
     // Check if content script is ready
