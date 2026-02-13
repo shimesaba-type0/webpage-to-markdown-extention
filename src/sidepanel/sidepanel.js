@@ -589,22 +589,34 @@ function loadViewPreferences() {
  * Enable clickable links in markdown preview (Issue #56)
  *
  * Makes links in the preview view clickable and functional.
- * - External links open in new background tab
+ * - External links open in new tabs (respects browser modifier keys)
  * - Internal links (#section) scroll smoothly to target
  *
+ * Browser Standard Behavior (User Feedback):
+ * - Click: New background tab (default)
+ * - Ctrl/Cmd + Click: New background tab (explicit)
+ * - Shift + Click: New foreground tab
+ * - Ctrl/Cmd + Shift + Click: New foreground tab
+ * - Middle Click: New background tab
+ *
  * UX Decision:
- * - New tab (background): Keeps SidePanel content visible
- * - Follows industry standard (GitHub, VS Code, Notion)
- * - Jakob's Law: Users expect links to be clickable
+ * - Default: Background tab (keeps SidePanel visible)
+ * - Modifier keys: Follow browser standards (Jakob's Law)
+ * - Intuitive: Users can control tab behavior naturally
  */
 function enableClickableLinks() {
-  // Remove existing listener if any (prevent duplicates)
-  const oldListener = previewView._linkClickListener;
-  if (oldListener) {
-    previewView.removeEventListener('click', oldListener);
+  // Remove existing listeners if any (prevent duplicates)
+  const oldClickListener = previewView._linkClickListener;
+  const oldMousedownListener = previewView._linkMousedownListener;
+
+  if (oldClickListener) {
+    previewView.removeEventListener('click', oldClickListener);
+  }
+  if (oldMousedownListener) {
+    previewView.removeEventListener('mousedown', oldMousedownListener);
   }
 
-  // Create new listener
+  // Handle regular clicks and Ctrl/Cmd/Shift + Click
   const linkClickListener = (e) => {
     // Find closest anchor element (event delegation)
     const link = e.target.closest('a');
@@ -628,18 +640,53 @@ function enableClickableLinks() {
       return;
     }
 
-    // External link - open in new background tab
-    chrome.tabs.create({ url: href, active: false });
-    console.log('[SidePanel] Opened external link in background tab:', href);
+    // External link - detect modifier keys
+    const newTab = e.ctrlKey || e.metaKey; // Ctrl (Win/Linux) or Cmd (Mac)
+    const foreground = e.shiftKey; // Shift = foreground tab
+
+    // Determine tab behavior
+    if (newTab || foreground) {
+      // Explicit modifier: open in new tab (foreground if Shift pressed)
+      chrome.tabs.create({ url: href, active: foreground });
+      console.log(`[SidePanel] Opened link in ${foreground ? 'foreground' : 'background'} tab (modifier):`, href);
+    } else {
+      // Default: open in new background tab
+      chrome.tabs.create({ url: href, active: false });
+      console.log('[SidePanel] Opened link in background tab (default):', href);
+    }
   };
 
-  // Attach listener
+  // Handle middle click (mousedown event, as click event doesn't fire for middle click)
+  const linkMousedownListener = (e) => {
+    // Middle click = button 1
+    if (e.button !== 1) return;
+
+    const link = e.target.closest('a');
+    if (!link) return;
+
+    const href = link.getAttribute('href');
+    if (!href) return;
+
+    // Prevent default middle click behavior
+    e.preventDefault();
+
+    // Skip internal links
+    if (href.startsWith('#')) return;
+
+    // Open in new background tab (browser standard for middle click)
+    chrome.tabs.create({ url: href, active: false });
+    console.log('[SidePanel] Opened link in background tab (middle click):', href);
+  };
+
+  // Attach listeners
   previewView.addEventListener('click', linkClickListener);
+  previewView.addEventListener('mousedown', linkMousedownListener);
 
-  // Store reference for cleanup
+  // Store references for cleanup
   previewView._linkClickListener = linkClickListener;
+  previewView._linkMousedownListener = linkMousedownListener;
 
-  console.log('[SidePanel] Clickable links enabled');
+  console.log('[SidePanel] Clickable links enabled with browser standard modifiers');
 }
 
 console.log('[SidePanel] Script loaded');
