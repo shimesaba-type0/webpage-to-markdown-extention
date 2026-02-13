@@ -287,6 +287,9 @@ function displayMarkdown(data) {
     // Render markdown
     renderMarkdown(processedMarkdown);
 
+    // Enable clickable links (Issue #56)
+    enableClickableLinks();
+
     // Show content
     showContentView();
 
@@ -580,6 +583,63 @@ function loadViewPreferences() {
   }
 
   console.log('[SidePanel] Loaded view preferences:', { font: savedFont || 'default', size: currentFontSize + '%' });
+}
+
+/**
+ * Enable clickable links in markdown preview (Issue #56)
+ *
+ * Makes links in the preview view clickable and functional.
+ * - External links open in new background tab
+ * - Internal links (#section) scroll smoothly to target
+ *
+ * UX Decision:
+ * - New tab (background): Keeps SidePanel content visible
+ * - Follows industry standard (GitHub, VS Code, Notion)
+ * - Jakob's Law: Users expect links to be clickable
+ */
+function enableClickableLinks() {
+  // Remove existing listener if any (prevent duplicates)
+  const oldListener = previewView._linkClickListener;
+  if (oldListener) {
+    previewView.removeEventListener('click', oldListener);
+  }
+
+  // Create new listener
+  const linkClickListener = (e) => {
+    // Find closest anchor element (event delegation)
+    const link = e.target.closest('a');
+    if (!link) return;
+
+    const href = link.getAttribute('href');
+    if (!href) return;
+
+    // Prevent default navigation
+    e.preventDefault();
+
+    // Internal link (e.g., #section-id) - scroll to target
+    if (href.startsWith('#')) {
+      const targetElement = document.querySelector(href);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        console.log('[SidePanel] Scrolled to internal link:', href);
+      } else {
+        console.warn('[SidePanel] Internal link target not found:', href);
+      }
+      return;
+    }
+
+    // External link - open in new background tab
+    chrome.tabs.create({ url: href, active: false });
+    console.log('[SidePanel] Opened external link in background tab:', href);
+  };
+
+  // Attach listener
+  previewView.addEventListener('click', linkClickListener);
+
+  // Store reference for cleanup
+  previewView._linkClickListener = linkClickListener;
+
+  console.log('[SidePanel] Clickable links enabled');
 }
 
 console.log('[SidePanel] Script loaded');
