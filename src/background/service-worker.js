@@ -91,11 +91,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'displayMarkdown') {
-    // Forward message to side panel
+    // Forward message to side panel (Issue #80: Improved error handling)
     chrome.runtime.sendMessage(request)
-      .then(() => sendResponse({ success: true }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
+      .then(() => {
+        console.log('[Service Worker] Message forwarded to SidePanel successfully');
+        sendResponse({ success: true });
+      })
+      .catch(error => {
+        console.error('[Service Worker] Failed to forward message to SidePanel:', error);
+        // Note: SidePanel may not be open yet, which is expected behavior
+        // Message will be picked up from storage fallback
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Indicates async response
   }
 });
 
