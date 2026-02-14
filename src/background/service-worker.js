@@ -268,6 +268,11 @@ function splitMarkdownIntoSections(markdown) {
  * - Browsers cannot make direct API calls to Anthropic
  * - Service Workers have no CORS restrictions
  *
+ * Bug Fix (Issue #75):
+ * - Add 'anthropic-dangerous-direct-browser-access' header
+ * - Required when calling Anthropic API from browser context (including Service Workers)
+ * - Without this header, API returns 401 authentication_error
+ *
  * @param {string} apiKey - Anthropic API key
  * @param {string} sectionContent - Markdown section to translate
  * @param {string} customPrompt - Optional custom prompt
@@ -305,7 +310,8 @@ ${sectionContent}`;
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
         model: model,
