@@ -339,12 +339,13 @@ ${sectionContent}`;
 
     if (!response.ok) {
       const errorText = await response.text();
+      // Security: Don't log errorText as it may contain sensitive headers (Issue #81)
       console.error('[Service Worker] Anthropic API error:', {
         status: response.status,
-        statusText: response.statusText,
-        errorText: errorText
+        statusText: response.statusText
+        // errorText intentionally not logged to prevent API key exposure
       });
-      throw new Error(`Translation API error: ${response.status} ${response.statusText}\n${errorText}`);
+      throw new Error(`Translation API error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
