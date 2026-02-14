@@ -242,10 +242,21 @@ function displayMarkdown(data) {
       articleDate.style.display = 'none';
     }
 
+    // URL validation and display (Issue #79 Item #6)
     if (metadata.url) {
-      articleUrl.textContent = metadata.siteName || new URL(metadata.url).hostname;
-      articleUrl.href = metadata.url;
-      articleUrl.style.display = 'inline';
+      try {
+        const url = new URL(metadata.url);
+        articleUrl.textContent = metadata.siteName || url.hostname;
+        articleUrl.href = metadata.url;
+        articleUrl.style.display = 'inline';
+      } catch (error) {
+        // Invalid URL - use raw text and don't make it clickable
+        console.warn('[SidePanel] Invalid URL in metadata:', metadata.url, error);
+        articleUrl.textContent = metadata.siteName || metadata.url;
+        articleUrl.removeAttribute('href');
+        articleUrl.style.display = 'inline';
+        articleUrl.style.cursor = 'default';
+      }
     } else {
       articleUrl.style.display = 'none';
     }
@@ -530,9 +541,15 @@ function downloadMarkdown() {
       });
     };
 
-    reader.onerror = () => {
-      console.error('[SidePanel] FileReader error:', reader.error);
-      showNotification('Failed to download', 'error');
+    // FileReader error handling (Issue #79 Item #5)
+    reader.onerror = (event) => {
+      console.error('[SidePanel] FileReader error:', {
+        error: reader.error,
+        errorName: reader.error?.name,
+        errorMessage: reader.error?.message,
+        event: event
+      });
+      showNotification(`Failed to download: ${reader.error?.message || 'Unknown error'}`, 'error');
     };
 
     reader.readAsDataURL(blob);
