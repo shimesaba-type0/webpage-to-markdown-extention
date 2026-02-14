@@ -301,6 +301,131 @@ function displayMarkdown(data) {
 }
 
 /**
+ * Sanitize HTML to prevent XSS attacks
+ *
+ * Security Fix (Issue #80):
+ * - Whitelist safe HTML elements and attributes
+ * - Remove potentially dangerous content (scripts, event handlers, etc.)
+ * - Use DOMParser for safe HTML parsing
+ *
+ * @param {string} html - Raw HTML from marked.parse()
+ * @returns {string} Sanitized HTML safe for innerHTML
+ */
+function sanitizeHTML(html) {
+  // Whitelist of safe tags
+  const ALLOWED_TAGS = [
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'p', 'div', 'span', 'br', 'hr',
+    'strong', 'em', 'b', 'i', 'u', 's', 'del', 'mark',
+    'ul', 'ol', 'li',
+    'a', 'img',
+    'code', 'pre',
+    'blockquote',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'details', 'summary'
+  ];
+
+  // Whitelist of safe attributes per tag
+  const ALLOWED_ATTRS = {
+    'a': ['href', 'title', 'target', 'rel'],
+    'img': ['src', 'alt', 'title', 'width', 'height'],
+    'code': ['class'],
+    'pre': ['class'],
+    'td': ['colspan', 'rowspan'],
+    'th': ['colspan', 'rowspan']
+  };
+
+  // Parse HTML safely
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  // Recursive function to sanitize nodes
+  function sanitizeNode(node) {
+    // Text nodes are safe
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.cloneNode(false);
+    }
+
+    // Only allow whitelisted elements
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const tagName = node.tagName.toLowerCase();
+
+      // Remove disallowed tags
+      if (!ALLOWED_TAGS.includes(tagName)) {
+        console.warn(`[SidePanel] Removed disallowed tag: ${tagName}`);
+        return null;
+      }
+
+      // Create sanitized element
+      const sanitized = document.createElement(tagName);
+
+      // Copy only whitelisted attributes
+      const allowedAttrs = ALLOWED_ATTRS[tagName] || [];
+      for (const attr of node.attributes) {
+        const attrName = attr.name.toLowerCase();
+
+        // Remove event handlers (onclick, onerror, etc.)
+        if (attrName.startsWith('on')) {
+          console.warn(`[SidePanel] Removed event handler: ${attrName}`);
+          continue;
+        }
+
+        // Copy whitelisted attributes
+        if (allowedAttrs.includes(attrName)) {
+          let attrValue = attr.value;
+
+          // Sanitize href to prevent javascript: protocol
+          if (attrName === 'href') {
+            const lower = attrValue.toLowerCase().trim();
+            if (lower.startsWith('javascript:') || lower.startsWith('data:')) {
+              console.warn(`[SidePanel] Blocked dangerous href: ${attrValue}`);
+              continue;
+            }
+          }
+
+          // Sanitize src to prevent javascript: protocol
+          if (attrName === 'src') {
+            const lower = attrValue.toLowerCase().trim();
+            if (lower.startsWith('javascript:')) {
+              console.warn(`[SidePanel] Blocked dangerous src: ${attrValue}`);
+              continue;
+            }
+          }
+
+          sanitized.setAttribute(attrName, attrValue);
+        }
+      }
+
+      // Recursively sanitize children
+      for (const child of node.childNodes) {
+        const sanitizedChild = sanitizeNode(child);
+        if (sanitizedChild) {
+          sanitized.appendChild(sanitizedChild);
+        }
+      }
+
+      return sanitized;
+    }
+
+    return null;
+  }
+
+  // Sanitize all nodes in body
+  const fragment = document.createDocumentFragment();
+  for (const child of doc.body.childNodes) {
+    const sanitized = sanitizeNode(child);
+    if (sanitized) {
+      fragment.appendChild(sanitized);
+    }
+  }
+
+  // Create temp div to get HTML string
+  const temp = document.createElement('div');
+  temp.appendChild(fragment);
+  return temp.innerHTML;
+}
+
+/**
  * Render markdown to HTML
  */
 function renderMarkdown(markdown) {
@@ -323,10 +448,13 @@ function renderMarkdown(markdown) {
     });
 
     // Render to HTML
-    const html = marked.parse(markdown);
+    const rawHtml = marked.parse(markdown);
 
-    // Update views
-    previewView.innerHTML = html;
+    // Sanitize HTML to prevent XSS (Issue #80)
+    const sanitizedHtml = sanitizeHTML(rawHtml);
+
+    // Update views with sanitized HTML
+    previewView.innerHTML = sanitizedHtml;
 
     // Safely update markdown code view
     if (markdownCode) {
