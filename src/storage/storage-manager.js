@@ -61,6 +61,14 @@ class StorageManager {
   /**
    * Save an article with metadata and markdown
    */
+  /**
+   * Save an article with metadata and markdown
+   *
+   * Bug Fix (Issue #79 Item #3):
+   * - Added transaction lifecycle handlers (oncomplete, onerror, onabort)
+   * - Ensures transaction completes successfully before resolving
+   * - Better error handling for transaction failures
+   */
   async saveArticle(articleData) {
     await this.init();
 
@@ -69,6 +77,28 @@ class StorageManager {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_ARTICLES], 'readwrite');
       const store = transaction.objectStore(STORE_ARTICLES);
+
+      let articleId = null;
+
+      // Transaction lifecycle handlers (Issue #79 Item #3)
+      transaction.oncomplete = () => {
+        console.log('[StorageManager] Transaction completed successfully');
+        if (articleId !== null) {
+          resolve(articleId);
+        } else {
+          reject(new Error('Transaction completed but articleId is null'));
+        }
+      };
+
+      transaction.onerror = (event) => {
+        console.error('[StorageManager] Transaction error:', event.target.error);
+        reject(transaction.error || new Error('Transaction failed'));
+      };
+
+      transaction.onabort = (event) => {
+        console.error('[StorageManager] Transaction aborted:', event.target.error);
+        reject(transaction.error || new Error('Transaction aborted'));
+      };
 
       const article = {
         metadata,
@@ -81,12 +111,15 @@ class StorageManager {
       const request = store.add(article);
 
       request.onsuccess = () => {
-        const articleId = request.result;
-        console.log('[StorageManager] Article saved:', articleId);
-        resolve(articleId);
+        articleId = request.result;
+        console.log('[StorageManager] Article added to store:', articleId);
+        // Note: Transaction will complete asynchronously, triggering oncomplete
       };
 
-      request.onerror = () => reject(request.error);
+      request.onerror = (event) => {
+        console.error('[StorageManager] Request error:', event.target.error);
+        // Transaction will automatically abort and trigger onabort
+      };
     });
   }
 
@@ -203,12 +236,39 @@ class StorageManager {
   /**
    * Save an image blob with metadata
    */
+  /**
+   * Save an image to IndexedDB
+   *
+   * Bug Fix (Issue #79 Item #3):
+   * - Added transaction lifecycle handlers
+   */
   async saveImage(articleId, imageData) {
     await this.init();
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_IMAGES], 'readwrite');
       const store = transaction.objectStore(STORE_IMAGES);
+
+      let imageId = null;
+
+      // Transaction lifecycle handlers (Issue #79 Item #3)
+      transaction.oncomplete = () => {
+        if (imageId !== null) {
+          resolve(imageId);
+        } else {
+          reject(new Error('Transaction completed but imageId is null'));
+        }
+      };
+
+      transaction.onerror = (event) => {
+        console.error('[StorageManager] Image save transaction error:', event.target.error);
+        reject(transaction.error || new Error('Image save transaction failed'));
+      };
+
+      transaction.onabort = (event) => {
+        console.error('[StorageManager] Image save transaction aborted:', event.target.error);
+        reject(transaction.error || new Error('Image save transaction aborted'));
+      };
 
       const image = {
         articleId,
@@ -223,12 +283,13 @@ class StorageManager {
       const request = store.add(image);
 
       request.onsuccess = () => {
-        const imageId = request.result;
-        console.log('[StorageManager] Image saved:', imageId);
-        resolve(imageId);
+        imageId = request.result;
+        console.log('[StorageManager] Image added to store:', imageId);
       };
 
-      request.onerror = () => reject(request.error);
+      request.onerror = (event) => {
+        console.error('[StorageManager] Image add request error:', event.target.error);
+      };
     });
   }
 
@@ -274,12 +335,35 @@ class StorageManager {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction([STORE_ARTICLES], 'readwrite');
       const store = transaction.objectStore(STORE_ARTICLES);
+
+      let updateCompleted = false;
+
+      // Transaction lifecycle handlers (Issue #79 Item #3)
+      transaction.oncomplete = () => {
+        if (updateCompleted) {
+          resolve(articleId);
+        } else {
+          reject(new Error('Transaction completed without update'));
+        }
+      };
+
+      transaction.onerror = (event) => {
+        console.error('[StorageManager] Translation save transaction error:', event.target.error);
+        reject(transaction.error || new Error('Translation save failed'));
+      };
+
+      transaction.onabort = (event) => {
+        console.error('[StorageManager] Translation save transaction aborted:', event.target.error);
+        reject(transaction.error || new Error('Translation save aborted'));
+      };
+
       const getRequest = store.get(articleId);
 
       getRequest.onsuccess = () => {
         const article = getRequest.result;
         if (!article) {
-          reject(new Error('Article not found'));
+          // Aborting transaction will trigger onabort handler
+          transaction.abort();
           return;
         }
 
@@ -288,11 +372,18 @@ class StorageManager {
         article.translatedAt = new Date().toISOString();
 
         const updateRequest = store.put(article);
-        updateRequest.onsuccess = () => resolve(articleId);
-        updateRequest.onerror = () => reject(updateRequest.error);
+        updateRequest.onsuccess = () => {
+          updateCompleted = true;
+          console.log('[StorageManager] Translation saved for article:', articleId);
+        };
+        updateRequest.onerror = (event) => {
+          console.error('[StorageManager] Update request error:', event.target.error);
+        };
       };
 
-      getRequest.onerror = () => reject(getRequest.error);
+      getRequest.onerror = (event) => {
+        console.error('[StorageManager] Get request error:', event.target.error);
+      };
     });
   }
 
