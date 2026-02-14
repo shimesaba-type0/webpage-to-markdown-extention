@@ -432,9 +432,9 @@ async function handleTranslateArticle(articleId) {
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i];
 
-      // Send progress updates to popup
+      // Send progress updates to popup (Issue #79 Item #2)
       try {
-        chrome.runtime.sendMessage({
+        await chrome.runtime.sendMessage({
           action: 'translationProgress',
           articleId,
           progress: {
@@ -443,11 +443,17 @@ async function handleTranslateArticle(articleId) {
             heading: section.heading,
             percentage: Math.round(((i + 1) / sections.length) * 100)
           }
-        }).catch(() => {
-          // Ignore errors if popup is closed
         });
       } catch (error) {
-        // Ignore message sending errors
+        // Expected: Popup may be closed, which is fine
+        // Log only unexpected errors for debugging
+        if (error.message && !error.message.includes('Receiving end does not exist')) {
+          console.warn('[Service Worker] Unexpected progress update error:', {
+            section: i + 1,
+            total: sections.length,
+            error: error.message
+          });
+        }
       }
 
       console.log(`[Service Worker] Translating section ${i + 1}/${sections.length}...`);
