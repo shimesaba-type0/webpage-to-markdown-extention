@@ -91,11 +91,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'displayMarkdown') {
-    // Forward message to side panel
+    // Forward message to side panel (Issue #80: Improved error handling)
     chrome.runtime.sendMessage(request)
-      .then(() => sendResponse({ success: true }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
+      .then(() => {
+        console.log('[Service Worker] Message forwarded to SidePanel successfully');
+        sendResponse({ success: true });
+      })
+      .catch(error => {
+        console.error('[Service Worker] Failed to forward message to SidePanel:', error);
+        // Note: SidePanel may not be open yet, which is expected behavior
+        // Message will be picked up from storage fallback
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Indicates async response
   }
 });
 
@@ -273,6 +281,12 @@ function splitMarkdownIntoSections(markdown) {
  * - Required when calling Anthropic API from browser context (including Service Workers)
  * - Without this header, API returns 401 authentication_error
  *
+ * Bug Fix (Issue #79):
+ * - Validate API response structure before accessing data.content[0].text
+ * - Check for missing or empty content array
+ * - Verify text field exists and is a string
+ * - Prevent TypeError from unexpected API response format
+ *
  * @param {string} apiKey - Anthropic API key
  * @param {string} sectionContent - Markdown section to translate
  * @param {string} customPrompt - Optional custom prompt
@@ -324,16 +338,28 @@ ${sectionContent}`;
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      // Security: Don't read error body as it may contain sensitive headers (Issue #81)
       console.error('[Service Worker] Anthropic API error:', {
         status: response.status,
-        statusText: response.statusText,
-        errorText: errorText
+        statusText: response.statusText
+        // Error body intentionally not logged to prevent API key exposure
       });
-      throw new Error(`Translation API error: ${response.status} ${response.statusText}\n${errorText}`);
+      throw new Error(`Translation API error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
+
+    // Validate API response structure (Issue #79)
+    if (!data.content || !Array.isArray(data.content) || data.content.length === 0) {
+      console.error('[Service Worker] Invalid Anthropic API response structure:', data);
+      throw new Error('Invalid Anthropic API response: missing or empty content array');
+    }
+
+    if (!data.content[0] || typeof data.content[0].text !== 'string') {
+      console.error('[Service Worker] Missing text in API response:', data.content[0]);
+      throw new Error('Invalid Anthropic API response: missing or invalid text field');
+    }
+
     return data.content[0].text;
   } catch (error) {
     console.error('[Service Worker] translateSectionViaAPI error:', error);

@@ -13,6 +13,48 @@ const articleListEl = document.getElementById('article-list');
 const articleCountEl = document.getElementById('article-count');
 const downloadImagesToggle = document.getElementById('download-images-toggle');
 
+/**
+ * Send data to SidePanel with retry logic
+ *
+ * Bug Fix (Issue #77):
+ * - Replace setTimeout race condition with reliable retry mechanism
+ * - Try multiple times before falling back to storage
+ * - Ensure message delivery before closing popup
+ *
+ * @param {Object} data - Data to send to SidePanel
+ * @param {number} maxRetries - Maximum number of retry attempts (default: 3)
+ * @param {number} retryDelay - Delay between retries in ms (default: 200)
+ * @returns {Promise<boolean>} True if message sent successfully, false otherwise
+ */
+async function sendToSidePanelWithRetry(data, maxRetries = 3, retryDelay = 200) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await chrome.runtime.sendMessage({
+        action: 'displayMarkdown',
+        data: data
+      });
+      console.log(`[Popup] Message sent to SidePanel successfully on attempt ${i + 1}`);
+      return true;
+    } catch (error) {
+      if (i < maxRetries - 1) {
+        console.warn(`[Popup] SidePanel not ready, retrying in ${retryDelay}ms... (attempt ${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      } else {
+        console.error(`[Popup] Failed to send message after ${maxRetries} attempts:`, error);
+        // Fallback: Save to storage for SidePanel to pick up on startup
+        try {
+          await chrome.storage.local.set({ pendingExtraction: data });
+          console.log('[Popup] Data saved to storage as fallback');
+        } catch (storageError) {
+          console.error('[Popup] Failed to save to storage:', storageError);
+        }
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
 // Event Listeners
 extractBtn.addEventListener('click', handleExtract);
 // translateBtn removed (Issue #65)
@@ -104,48 +146,46 @@ async function handleExtract() {
         // Using tabId instead of windowId for better tab-specific behavior
         await chrome.sidePanel.open({ tabId: tab.id });
 
-        // Send data directly to SidePanel (primary flow)
-        setTimeout(async () => {
-          try {
-            // Fix data structure access (Issue #65, #69)
-            console.log('[Popup] Result structure:', {
-              success: result.success,
-              hasMetadata: !!result.metadata,
-              hasMarkdown: !!result.markdown,
-              hasArticleId: !!result.articleId,
-              hasImages: !!result.images
-            });
+        // Fix data structure access (Issue #65, #69)
+        console.log('[Popup] Result structure:', {
+          success: result.success,
+          hasMetadata: !!result.metadata,
+          hasMarkdown: !!result.markdown,
+          hasArticleId: !!result.articleId,
+          hasImages: !!result.images
+        });
 
-            const { metadata, markdown, articleId } = result;
+        const { metadata, markdown, articleId } = result;
 
-            // Validate required fields (Issue #69)
-            if (!metadata) {
-              console.error('[Popup] metadata is undefined. Full result:', result);
-              throw new Error('Failed to extract article metadata');
-            }
+        // Validate required fields (Issue #69)
+        if (!metadata) {
+          console.error('[Popup] metadata is undefined. Full result:', result);
+          throw new Error('Failed to extract article metadata');
+        }
 
-            if (!markdown) {
-              console.error('[Popup] markdown is undefined. Full result:', result);
-              throw new Error('Failed to extract article content');
-            }
+        if (!markdown) {
+          console.error('[Popup] markdown is undefined. Full result:', result);
+          throw new Error('Failed to extract article content');
+        }
 
-            await chrome.runtime.sendMessage({
-              action: 'displayMarkdown',
-              data: {
-                metadata,
-                markdown,
-                images: result.images || [], // Integration with Team A (Issue #25)
-                articleId
-              }
-            });
-            console.log('[Popup] displayMarkdown message sent to SidePanel');
-          } catch (error) {
-            console.error('[Popup] Failed to send message to SidePanel:', error);
-          } finally {
-            // Close popup after message is sent (Rev2 pattern)
-            window.close();
-          }
-        }, 500);
+        // Send data directly to SidePanel with retry logic (Issue #77)
+        const messageData = {
+          metadata,
+          markdown,
+          images: result.images || [], // Integration with Team A (Issue #25)
+          articleId
+        };
+
+        const sent = await sendToSidePanelWithRetry(messageData);
+
+        if (sent) {
+          console.log('[Popup] Content successfully sent to SidePanel');
+        } else {
+          console.warn('[Popup] SidePanel not ready, content saved to storage as fallback');
+        }
+
+        // Close popup after we've done our best to deliver the message (Issue #77)
+        window.close();
       } catch (error) {
         console.error('[Popup] Side panel error:', error);
         // Fallback: just show success
