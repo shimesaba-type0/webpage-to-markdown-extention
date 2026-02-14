@@ -5,7 +5,7 @@
 
 // DOM Elements
 const extractBtn = document.getElementById('extract-btn');
-const translateBtn = document.getElementById('translate-btn');
+// translateBtn removed (Issue #65: Use per-article translate buttons instead)
 const settingsBtn = document.getElementById('settings-btn');
 const exportAllBtn = document.getElementById('export-all-btn');
 const statusEl = document.getElementById('status');
@@ -15,7 +15,7 @@ const downloadImagesToggle = document.getElementById('download-images-toggle');
 
 // Event Listeners
 extractBtn.addEventListener('click', handleExtract);
-translateBtn.addEventListener('click', handleTranslate);
+// translateBtn removed (Issue #65)
 settingsBtn.addEventListener('click', openSettings);
 exportAllBtn.addEventListener('click', exportAll);
 downloadImagesToggle.addEventListener('change', handleDownloadImagesToggle);
@@ -35,10 +35,7 @@ async function init() {
     downloadImages: false
   });
 
-  // Show/hide translation button based on settings
-  if (settings.enableTranslation) {
-    translateBtn.style.display = 'flex';
-  }
+  // Translation button removed (Issue #65: Use per-article translate buttons instead)
 
   // Set download images toggle state (Issue #44 UX improvement)
   downloadImagesToggle.checked = settings.downloadImages;
@@ -110,13 +107,14 @@ async function handleExtract() {
         // Send data directly to SidePanel (primary flow)
         setTimeout(async () => {
           try {
-            const { metadata, markdown, articleId } = result.data;
+            // Fix data structure access (Issue #65)
+            const { metadata, markdown, articleId } = result;
             await chrome.runtime.sendMessage({
               action: 'displayMarkdown',
               data: {
                 metadata,
                 markdown,
-                images: result.data.images || [], // Integration with Team A (Issue #25)
+                images: result.images || [], // Integration with Team A (Issue #25)
                 articleId
               }
             });
@@ -140,9 +138,10 @@ async function handleExtract() {
         autoTranslate: false
       });
 
-      if (settings.enableTranslation && settings.autoTranslate && result.data && result.data.articleId) {
+      // Fix data structure access (Issue #65)
+      if (settings.enableTranslation && settings.autoTranslate && result.articleId) {
         setTimeout(() => {
-          handleTranslate(result.data.articleId);
+          handleTranslate(result.articleId);
         }, 1000);
       }
     } else {
@@ -158,15 +157,20 @@ async function handleExtract() {
 
 /**
  * Handle translate action
+ *
+ * Bug Fix (Issue #65):
+ * - Add articleId validation to prevent IndexedDB errors
+ * - Ensure articleId is a valid positive number
  */
 async function handleTranslate(articleId) {
   try {
-    showStatus('Translating to Japanese...', 'loading');
-    translateBtn.disabled = true;
-
-    if (!articleId) {
-      throw new Error('No article selected for translation');
+    // Validate articleId (Issue #65: Defense in depth)
+    if (!articleId || typeof articleId !== 'number' || isNaN(articleId) || articleId <= 0) {
+      throw new Error(`Invalid article ID for translation: ${articleId} (type: ${typeof articleId})`);
     }
+
+    showStatus('Translating to Japanese...', 'loading');
+    // translateBtn removed (Issue #65)
 
     // Send translate request to background script
     const response = await chrome.runtime.sendMessage({
@@ -183,9 +187,8 @@ async function handleTranslate(articleId) {
   } catch (error) {
     console.error('[Popup] Translation error:', error);
     showStatus(`✗ ${error.message}`, 'error');
-  } finally {
-    translateBtn.disabled = false;
   }
+  // translateBtn removed (Issue #65)
 }
 
 /**
