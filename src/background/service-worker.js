@@ -338,12 +338,11 @@ ${sectionContent}`;
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      // Security: Don't log errorText as it may contain sensitive headers (Issue #81)
+      // Security: Don't read error body as it may contain sensitive headers (Issue #81)
       console.error('[Service Worker] Anthropic API error:', {
         status: response.status,
         statusText: response.statusText
-        // errorText intentionally not logged to prevent API key exposure
+        // Error body intentionally not logged to prevent API key exposure
       });
       throw new Error(`Translation API error: ${response.status} ${response.statusText}`);
     }
