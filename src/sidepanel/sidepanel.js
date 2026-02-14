@@ -585,8 +585,36 @@ function loadViewPreferences() {
   console.log('[SidePanel] Loaded view preferences:', { font: savedFont || 'default', size: currentFontSize + '%' });
 }
 
+// Event listener references for proper cleanup (Issue #78)
+let currentClickListener = null;
+let currentMousedownListener = null;
+
+/**
+ * Disable clickable links and cleanup event listeners
+ *
+ * Bug Fix (Issue #78):
+ * - Properly remove event listeners to prevent memory leaks
+ * - Called before attaching new listeners to avoid duplicates
+ */
+function disableClickableLinks() {
+  if (currentClickListener) {
+    previewView.removeEventListener('click', currentClickListener);
+    currentClickListener = null;
+  }
+  if (currentMousedownListener) {
+    previewView.removeEventListener('mousedown', currentMousedownListener);
+    currentMousedownListener = null;
+  }
+  console.log('[SidePanel] Clickable links disabled and cleaned up');
+}
+
 /**
  * Enable clickable links in markdown preview (Issue #56)
+ *
+ * Bug Fix (Issue #78):
+ * - Use closure variables instead of DOM properties for listener references
+ * - Call disableClickableLinks() first to prevent duplicate listeners
+ * - Proper memory management to prevent leaks on repeated calls
  *
  * Makes links in the preview view clickable and functional.
  * - External links open in new tabs (respects browser modifier keys)
@@ -605,16 +633,8 @@ function loadViewPreferences() {
  * - Intuitive: Users can control tab behavior naturally
  */
 function enableClickableLinks() {
-  // Remove existing listeners if any (prevent duplicates)
-  const oldClickListener = previewView._linkClickListener;
-  const oldMousedownListener = previewView._linkMousedownListener;
-
-  if (oldClickListener) {
-    previewView.removeEventListener('click', oldClickListener);
-  }
-  if (oldMousedownListener) {
-    previewView.removeEventListener('mousedown', oldMousedownListener);
-  }
+  // Remove existing listeners first to prevent duplicates (Issue #78)
+  disableClickableLinks();
 
   // Handle regular clicks and Ctrl/Cmd/Shift + Click
   const linkClickListener = (e) => {
@@ -682,9 +702,9 @@ function enableClickableLinks() {
   previewView.addEventListener('click', linkClickListener);
   previewView.addEventListener('mousedown', linkMousedownListener);
 
-  // Store references for cleanup
-  previewView._linkClickListener = linkClickListener;
-  previewView._linkMousedownListener = linkMousedownListener;
+  // Store references in closure variables for cleanup (Issue #78)
+  currentClickListener = linkClickListener;
+  currentMousedownListener = linkMousedownListener;
 
   console.log('[SidePanel] Clickable links enabled with browser standard modifiers');
 }
