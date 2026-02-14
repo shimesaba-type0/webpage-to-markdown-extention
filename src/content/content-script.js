@@ -112,8 +112,8 @@ function extractImages(htmlContent) {
     // Skip data URLs and very small images (likely icons)
     if (!src || src.startsWith('data:')) return;
 
-    const width = img.width || parseInt(img.getAttribute('width')) || 0;
-    const height = img.height || parseInt(img.getAttribute('height')) || 0;
+    const width = img.width || parseInt(img.getAttribute('width'), 10) || 0;
+    const height = img.height || parseInt(img.getAttribute('height'), 10) || 0;
 
     // Skip very small images (likely icons/buttons)
     if (width > 0 && height > 0 && (width < 50 || height < 50)) {

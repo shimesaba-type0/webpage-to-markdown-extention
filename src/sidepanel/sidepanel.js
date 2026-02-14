@@ -719,12 +719,19 @@ function loadViewPreferences() {
     applyFontFamily(savedFont);
   }
 
-  // Load font size
+  // Load font size with validation (Issue #79 Item #8)
   const savedSize = localStorage.getItem('sidepanel-font-size');
   if (savedSize) {
-    currentFontSize = parseInt(savedSize, 10);
-    previewView.style.fontSize = currentFontSize + '%';
-    markdownView.style.fontSize = currentFontSize + '%';
+    const parsedSize = parseInt(savedSize, 10);
+    // Validate range (min: 80, max: 150)
+    if (!isNaN(parsedSize) && parsedSize >= 80 && parsedSize <= 150) {
+      currentFontSize = parsedSize;
+      previewView.style.fontSize = currentFontSize + '%';
+      markdownView.style.fontSize = currentFontSize + '%';
+    } else {
+      console.warn('[SidePanel] Invalid font size in localStorage:', savedSize, '- using default');
+      localStorage.removeItem('sidepanel-font-size'); // Clean up invalid value
+    }
   }
 
   console.log('[SidePanel] Loaded view preferences:', { font: savedFont || 'default', size: currentFontSize + '%' });

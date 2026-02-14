@@ -409,7 +409,7 @@ async function loadSavedArticles() {
     document.querySelectorAll('.view-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const articleId = parseInt(btn.dataset.id);
+        const articleId = parseInt(btn.dataset.id, 10);
         viewArticle(articleId);
       });
     });
@@ -417,7 +417,7 @@ async function loadSavedArticles() {
     document.querySelectorAll('.translate-article-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const articleId = parseInt(btn.dataset.id);
+        const articleId = parseInt(btn.dataset.id, 10);
         // Validate articleId before calling translateArticle (Issue #63)
         if (isNaN(articleId) || articleId <= 0) {
           console.error('[Popup] Invalid article ID for translation:', btn.dataset.id);
@@ -431,7 +431,7 @@ async function loadSavedArticles() {
     document.querySelectorAll('.export-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const articleId = parseInt(btn.dataset.id);
+        const articleId = parseInt(btn.dataset.id, 10);
         await exportArticle(articleId);
       });
     });
@@ -439,7 +439,7 @@ async function loadSavedArticles() {
     document.querySelectorAll('.delete-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const articleId = parseInt(btn.dataset.id);
+        const articleId = parseInt(btn.dataset.id, 10);
         await deleteArticle(articleId);
       });
     });

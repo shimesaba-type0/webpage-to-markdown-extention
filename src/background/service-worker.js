@@ -597,8 +597,23 @@ async function handleGetArticles() {
 
     return validArticles;
   } catch (error) {
-    console.error('[Service Worker] Get articles error:', error);
-    throw error;
+    // Improved error messaging (Issue #79 Item #9)
+    console.error('[Service Worker] Get articles error:', {
+      error: error.message,
+      name: error.name,
+      stack: error.stack
+    });
+
+    // Provide specific error message based on error type
+    if (error.name === 'InvalidStateError') {
+      throw new Error('Database is not accessible. Please try again.');
+    } else if (error.name === 'NotFoundError') {
+      throw new Error('Articles database not found. Please extract an article first.');
+    } else if (error.name === 'QuotaExceededError') {
+      throw new Error('Storage quota exceeded. Please delete some articles.');
+    } else {
+      throw new Error(`Failed to retrieve articles: ${error.message}`);
+    }
   }
 }
 
