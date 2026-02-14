@@ -522,37 +522,27 @@ function downloadMarkdown() {
     const filename = generateFilename(currentMetadata);
     const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
 
-    // Convert blob to data URL for compatibility
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
+    // Use Blob URL directly for better memory efficiency (Issue #81 Item #3)
+    // Chrome 88+ (required for Manifest V3) supports blob: URLs in downloads
+    const blobUrl = URL.createObjectURL(blob);
 
-      chrome.downloads.download({
-        url: dataUrl,
-        filename: filename,
-        saveAs: true
-      }, (_downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error('[SidePanel] Download error:', chrome.runtime.lastError);
-          showNotification('Failed to download', 'error');
-          return;
-        }
-        showNotification('Download started');
-      });
-    };
+    chrome.downloads.download({
+      url: blobUrl,
+      filename: filename,
+      saveAs: true
+    }, (downloadId) => {
+      // Revoke Blob URL after download starts to free memory
+      URL.revokeObjectURL(blobUrl);
 
-    // FileReader error handling (Issue #79 Item #5)
-    reader.onerror = (event) => {
-      console.error('[SidePanel] FileReader error:', {
-        error: reader.error,
-        errorName: reader.error?.name,
-        errorMessage: reader.error?.message,
-        event: event
-      });
-      showNotification(`Failed to download: ${reader.error?.message || 'Unknown error'}`, 'error');
-    };
+      if (chrome.runtime.lastError) {
+        console.error('[SidePanel] Download error:', chrome.runtime.lastError);
+        showNotification('Failed to download', 'error');
+        return;
+      }
 
-    reader.readAsDataURL(blob);
+      console.log('[SidePanel] Download started:', downloadId);
+      showNotification('Download started');
+    });
   } catch (error) {
     console.error('[SidePanel] Download error:', error);
     showNotification('Failed to download', 'error');
@@ -742,6 +732,44 @@ let currentClickListener = null;
 let currentMousedownListener = null;
 
 /**
+ * Validate URL for safe navigation
+ *
+ * Security (Issue #81 Item #4):
+ * - Prevent Open Redirect vulnerabilities
+ * - Only allow http: and https: protocols
+ * - Block javascript:, data:, file:, and other dangerous protocols
+ *
+ * @param {string} url - URL to validate
+ * @returns {boolean} True if URL is safe, false otherwise
+ */
+function isSafeUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+
+  // Allow relative URLs and hash links
+  if (url.startsWith('/') || url.startsWith('#')) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(url, window.location.href);
+    const protocol = parsed.protocol.toLowerCase();
+
+    // Only allow http and https
+    if (protocol === 'http:' || protocol === 'https:') {
+      return true;
+    }
+
+    console.warn('[SidePanel] Blocked unsafe URL protocol:', protocol, url);
+    return false;
+  } catch (error) {
+    console.warn('[SidePanel] Invalid URL:', url, error);
+    return false;
+  }
+}
+
+/**
  * Disable clickable links and cleanup event listeners
  *
  * Bug Fix (Issue #78):
@@ -812,6 +840,12 @@ function enableClickableLinks() {
       return;
     }
 
+    // Validate URL for security (Issue #81 Item #4)
+    if (!isSafeUrl(href)) {
+      console.error('[SidePanel] Blocked unsafe link:', href);
+      return;
+    }
+
     // External link - detect modifier keys
     const newTab = e.ctrlKey || e.metaKey; // Ctrl (Win/Linux) or Cmd (Mac)
     const foreground = e.shiftKey; // Shift = foreground tab
@@ -844,6 +878,12 @@ function enableClickableLinks() {
 
     // Skip internal links
     if (href.startsWith('#')) return;
+
+    // Validate URL for security (Issue #81 Item #4)
+    if (!isSafeUrl(href)) {
+      console.error('[SidePanel] Blocked unsafe link (middle click):', href);
+      return;
+    }
 
     // Open in new background tab (browser standard for middle click)
     chrome.tabs.create({ url: href, active: false });
