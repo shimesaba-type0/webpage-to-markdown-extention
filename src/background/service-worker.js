@@ -14,6 +14,86 @@ importScripts('../lib/jszip.min.js', '../export/file-exporter.js');
 // Translation logic moved to Service Worker (Issue #70)
 // No longer importing translator.js to avoid CORS issues
 
+/**
+ * Rate limiter for API requests
+ *
+ * Security (Issue #81 Item #5):
+ * - Prevents resource exhaustion from excessive API calls
+ * - Uses sliding window algorithm
+ * - Limits: 10 requests per minute, 50 requests per hour
+ */
+class ApiRateLimiter {
+  constructor() {
+    this.requests = []; // Array of timestamps
+    this.minuteLimit = 10; // Max requests per minute
+    this.hourLimit = 50; // Max requests per hour
+  }
+
+  /**
+   * Check if request is allowed and record it
+   * @returns {Object} { allowed: boolean, reason: string }
+   */
+  checkLimit() {
+    const now = Date.now();
+    const oneMinuteAgo = now - 60 * 1000;
+    const oneHourAgo = now - 60 * 60 * 1000;
+
+    // Remove old requests
+    this.requests = this.requests.filter(timestamp => timestamp > oneHourAgo);
+
+    // Count requests in last minute
+    const minuteRequests = this.requests.filter(timestamp => timestamp > oneMinuteAgo).length;
+    if (minuteRequests >= this.minuteLimit) {
+      return {
+        allowed: false,
+        reason: `Rate limit exceeded: ${minuteRequests}/${this.minuteLimit} requests in last minute. Please wait before translating again.`
+      };
+    }
+
+    // Count requests in last hour
+    const hourRequests = this.requests.length;
+    if (hourRequests >= this.hourLimit) {
+      return {
+        allowed: false,
+        reason: `Rate limit exceeded: ${hourRequests}/${this.hourLimit} requests in last hour. Please try again later.`
+      };
+    }
+
+    // Record this request
+    this.requests.push(now);
+
+    return {
+      allowed: true,
+      reason: `OK (${minuteRequests + 1}/${this.minuteLimit} per minute, ${hourRequests + 1}/${this.hourLimit} per hour)`
+    };
+  }
+
+  /**
+   * Get current rate limit status
+   * @returns {Object} Statistics about current usage
+   */
+  getStatus() {
+    const now = Date.now();
+    const oneMinuteAgo = now - 60 * 1000;
+    const oneHourAgo = now - 60 * 60 * 1000;
+
+    this.requests = this.requests.filter(timestamp => timestamp > oneHourAgo);
+
+    const minuteRequests = this.requests.filter(timestamp => timestamp > oneMinuteAgo).length;
+    const hourRequests = this.requests.length;
+
+    return {
+      minuteRequests,
+      minuteLimit: this.minuteLimit,
+      hourRequests,
+      hourLimit: this.hourLimit
+    };
+  }
+}
+
+// Global rate limiter instance (Issue #81 Item #5)
+const apiRateLimiter = new ApiRateLimiter();
+
 console.log('[Service Worker] Starting...');
 
 // Extension installation/update handler
@@ -387,6 +467,14 @@ async function handleTranslateArticle(articleId) {
       throw new Error(`Invalid article ID: ${articleId} (type: ${typeof articleId})`);
     }
 
+    // Check rate limit (Issue #81 Item #5)
+    const rateLimitCheck = apiRateLimiter.checkLimit();
+    if (!rateLimitCheck.allowed) {
+      console.warn('[Service Worker] Translation blocked by rate limiter:', rateLimitCheck.reason);
+      throw new Error(rateLimitCheck.reason);
+    }
+    console.log('[Service Worker] Rate limit check passed:', rateLimitCheck.reason);
+
     // Get settings
     const settings = await chrome.storage.sync.get({
       enableTranslation: false,
@@ -432,9 +520,9 @@ async function handleTranslateArticle(articleId) {
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i];
 
-      // Send progress updates to popup
+      // Send progress updates to popup (Issue #79 Item #2)
       try {
-        chrome.runtime.sendMessage({
+        await chrome.runtime.sendMessage({
           action: 'translationProgress',
           articleId,
           progress: {
@@ -443,11 +531,17 @@ async function handleTranslateArticle(articleId) {
             heading: section.heading,
             percentage: Math.round(((i + 1) / sections.length) * 100)
           }
-        }).catch(() => {
-          // Ignore errors if popup is closed
         });
       } catch (error) {
-        // Ignore message sending errors
+        // Expected: Popup may be closed, which is fine
+        // Log only unexpected errors for debugging
+        if (error.message && !error.message.includes('Receiving end does not exist')) {
+          console.warn('[Service Worker] Unexpected progress update error:', {
+            section: i + 1,
+            total: sections.length,
+            error: error.message
+          });
+        }
       }
 
       console.log(`[Service Worker] Translating section ${i + 1}/${sections.length}...`);
@@ -591,8 +685,23 @@ async function handleGetArticles() {
 
     return validArticles;
   } catch (error) {
-    console.error('[Service Worker] Get articles error:', error);
-    throw error;
+    // Improved error messaging (Issue #79 Item #9)
+    console.error('[Service Worker] Get articles error:', {
+      error: error.message,
+      name: error.name,
+      stack: error.stack
+    });
+
+    // Provide specific error message based on error type
+    if (error.name === 'InvalidStateError') {
+      throw new Error('Database is not accessible. Please try again.');
+    } else if (error.name === 'NotFoundError') {
+      throw new Error('Articles database not found. Please extract an article first.');
+    } else if (error.name === 'QuotaExceededError') {
+      throw new Error('Storage quota exceeded. Please delete some articles.');
+    } else {
+      throw new Error(`Failed to retrieve articles: ${error.message}`);
+    }
   }
 }
 

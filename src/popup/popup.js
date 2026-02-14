@@ -55,6 +55,25 @@ async function sendToSidePanelWithRetry(data, maxRetries = 3, retryDelay = 200) 
   return false;
 }
 
+/**
+ * Validate response from chrome.runtime.sendMessage
+ *
+ * Bug Fix (Issue #79 Item #4):
+ * - Validate response exists and is an object before accessing properties
+ * - Prevents TypeError when service worker doesn't respond or returns undefined
+ *
+ * @param {any} response - Response from sendMessage
+ * @param {string} operation - Operation name for error messages
+ * @returns {Object} Validated response object
+ * @throws {Error} If response is invalid
+ */
+function validateResponse(response, operation) {
+  if (!response || typeof response !== 'object') {
+    throw new Error(`${operation}: Service worker did not respond properly (received: ${typeof response})`);
+  }
+  return response;
+}
+
 // Event Listeners
 extractBtn.addEventListener('click', handleExtract);
 // translateBtn removed (Issue #65)
@@ -238,6 +257,9 @@ async function handleTranslate(articleId) {
       articleId: articleId
     });
 
+    // Validate response (Issue #79 Item #4)
+    validateResponse(response, 'Translate article');
+
     if (response.success) {
       showStatus('✓ Translation completed!', 'success');
       loadSavedArticles();
@@ -268,6 +290,9 @@ async function exportAll() {
     const response = await chrome.runtime.sendMessage({
       action: 'exportAll'
     });
+
+    // Validate response (Issue #79 Item #4)
+    validateResponse(response, 'Export all');
 
     if (response.success) {
       showStatus('✓ Export completed!', 'success');
@@ -320,6 +345,9 @@ async function loadSavedArticles() {
     const response = await chrome.runtime.sendMessage({
       action: 'getArticles'
     });
+
+    // Validate response (Issue #79 Item #4)
+    validateResponse(response, 'Get articles');
 
     if (!response.success) {
       throw new Error(response.error || 'Failed to load articles');
@@ -381,7 +409,7 @@ async function loadSavedArticles() {
     document.querySelectorAll('.view-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const articleId = parseInt(btn.dataset.id);
+        const articleId = parseInt(btn.dataset.id, 10);
         viewArticle(articleId);
       });
     });
@@ -389,7 +417,7 @@ async function loadSavedArticles() {
     document.querySelectorAll('.translate-article-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const articleId = parseInt(btn.dataset.id);
+        const articleId = parseInt(btn.dataset.id, 10);
         // Validate articleId before calling translateArticle (Issue #63)
         if (isNaN(articleId) || articleId <= 0) {
           console.error('[Popup] Invalid article ID for translation:', btn.dataset.id);
@@ -403,7 +431,7 @@ async function loadSavedArticles() {
     document.querySelectorAll('.export-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const articleId = parseInt(btn.dataset.id);
+        const articleId = parseInt(btn.dataset.id, 10);
         await exportArticle(articleId);
       });
     });
@@ -411,7 +439,7 @@ async function loadSavedArticles() {
     document.querySelectorAll('.delete-btn').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const articleId = parseInt(btn.dataset.id);
+        const articleId = parseInt(btn.dataset.id, 10);
         await deleteArticle(articleId);
       });
     });
@@ -437,6 +465,9 @@ async function viewArticle(articleId) {
     });
 
     console.log('[Popup] getArticle response:', response);
+
+    // Validate response (Issue #79 Item #4)
+    validateResponse(response, 'Get article');
 
     if (!response.success) {
       throw new Error(response.error || 'Failed to get article');
@@ -528,6 +559,9 @@ async function translateArticle(articleId) {
       articleId
     });
 
+    // Validate response (Issue #79 Item #4)
+    validateResponse(response, 'Translate article');
+
     if (!response.success) {
       throw new Error(response.error || 'Failed to translate article');
     }
@@ -556,6 +590,9 @@ async function exportArticle(articleId) {
       articleId
     });
 
+    // Validate response (Issue #79 Item #4)
+    validateResponse(response, 'Export article');
+
     if (!response.success) {
       throw new Error(response.error || 'Failed to export article');
     }
@@ -582,6 +619,9 @@ async function deleteArticle(articleId) {
       action: 'deleteArticle',
       articleId
     });
+
+    // Validate response (Issue #79 Item #4)
+    validateResponse(response, 'Delete article');
 
     if (!response.success) {
       throw new Error(response.error || 'Failed to delete article');

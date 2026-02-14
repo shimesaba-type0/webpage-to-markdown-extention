@@ -242,10 +242,21 @@ function displayMarkdown(data) {
       articleDate.style.display = 'none';
     }
 
+    // URL validation and display (Issue #79 Item #6)
     if (metadata.url) {
-      articleUrl.textContent = metadata.siteName || new URL(metadata.url).hostname;
-      articleUrl.href = metadata.url;
-      articleUrl.style.display = 'inline';
+      try {
+        const url = new URL(metadata.url);
+        articleUrl.textContent = metadata.siteName || url.hostname;
+        articleUrl.href = metadata.url;
+        articleUrl.style.display = 'inline';
+      } catch (error) {
+        // Invalid URL - use raw text and don't make it clickable
+        console.warn('[SidePanel] Invalid URL in metadata:', metadata.url, error);
+        articleUrl.textContent = metadata.siteName || metadata.url;
+        articleUrl.removeAttribute('href');
+        articleUrl.style.display = 'inline';
+        articleUrl.style.cursor = 'default';
+      }
     } else {
       articleUrl.style.display = 'none';
     }
@@ -301,6 +312,131 @@ function displayMarkdown(data) {
 }
 
 /**
+ * Sanitize HTML to prevent XSS attacks
+ *
+ * Security Fix (Issue #80):
+ * - Whitelist safe HTML elements and attributes
+ * - Remove potentially dangerous content (scripts, event handlers, etc.)
+ * - Use DOMParser for safe HTML parsing
+ *
+ * @param {string} html - Raw HTML from marked.parse()
+ * @returns {string} Sanitized HTML safe for innerHTML
+ */
+function sanitizeHTML(html) {
+  // Whitelist of safe tags
+  const ALLOWED_TAGS = [
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'p', 'div', 'span', 'br', 'hr',
+    'strong', 'em', 'b', 'i', 'u', 's', 'del', 'mark',
+    'ul', 'ol', 'li',
+    'a', 'img',
+    'code', 'pre',
+    'blockquote',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'details', 'summary'
+  ];
+
+  // Whitelist of safe attributes per tag
+  const ALLOWED_ATTRS = {
+    'a': ['href', 'title', 'target', 'rel'],
+    'img': ['src', 'alt', 'title', 'width', 'height'],
+    'code': ['class'],
+    'pre': ['class'],
+    'td': ['colspan', 'rowspan'],
+    'th': ['colspan', 'rowspan']
+  };
+
+  // Parse HTML safely
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  // Recursive function to sanitize nodes
+  function sanitizeNode(node) {
+    // Text nodes are safe
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.cloneNode(false);
+    }
+
+    // Only allow whitelisted elements
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const tagName = node.tagName.toLowerCase();
+
+      // Remove disallowed tags
+      if (!ALLOWED_TAGS.includes(tagName)) {
+        console.warn(`[SidePanel] Removed disallowed tag: ${tagName}`);
+        return null;
+      }
+
+      // Create sanitized element
+      const sanitized = document.createElement(tagName);
+
+      // Copy only whitelisted attributes
+      const allowedAttrs = ALLOWED_ATTRS[tagName] || [];
+      for (const attr of node.attributes) {
+        const attrName = attr.name.toLowerCase();
+
+        // Remove event handlers (onclick, onerror, etc.)
+        if (attrName.startsWith('on')) {
+          console.warn(`[SidePanel] Removed event handler: ${attrName}`);
+          continue;
+        }
+
+        // Copy whitelisted attributes
+        if (allowedAttrs.includes(attrName)) {
+          let attrValue = attr.value;
+
+          // Sanitize href to prevent javascript: protocol
+          if (attrName === 'href') {
+            const lower = attrValue.toLowerCase().trim();
+            if (lower.startsWith('javascript:') || lower.startsWith('data:')) {
+              console.warn(`[SidePanel] Blocked dangerous href: ${attrValue}`);
+              continue;
+            }
+          }
+
+          // Sanitize src to prevent javascript: protocol
+          if (attrName === 'src') {
+            const lower = attrValue.toLowerCase().trim();
+            if (lower.startsWith('javascript:')) {
+              console.warn(`[SidePanel] Blocked dangerous src: ${attrValue}`);
+              continue;
+            }
+          }
+
+          sanitized.setAttribute(attrName, attrValue);
+        }
+      }
+
+      // Recursively sanitize children
+      for (const child of node.childNodes) {
+        const sanitizedChild = sanitizeNode(child);
+        if (sanitizedChild) {
+          sanitized.appendChild(sanitizedChild);
+        }
+      }
+
+      return sanitized;
+    }
+
+    return null;
+  }
+
+  // Sanitize all nodes in body
+  const fragment = document.createDocumentFragment();
+  for (const child of doc.body.childNodes) {
+    const sanitized = sanitizeNode(child);
+    if (sanitized) {
+      fragment.appendChild(sanitized);
+    }
+  }
+
+  // Create temp div to get HTML string
+  const temp = document.createElement('div');
+  temp.appendChild(fragment);
+  return temp.innerHTML;
+}
+
+/**
  * Render markdown to HTML
  */
 function renderMarkdown(markdown) {
@@ -323,10 +459,13 @@ function renderMarkdown(markdown) {
     });
 
     // Render to HTML
-    const html = marked.parse(markdown);
+    const rawHtml = marked.parse(markdown);
 
-    // Update views
-    previewView.innerHTML = html;
+    // Sanitize HTML to prevent XSS (Issue #80)
+    const sanitizedHtml = sanitizeHTML(rawHtml);
+
+    // Update views with sanitized HTML
+    previewView.innerHTML = sanitizedHtml;
 
     // Safely update markdown code view
     if (markdownCode) {
@@ -383,31 +522,27 @@ function downloadMarkdown() {
     const filename = generateFilename(currentMetadata);
     const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
 
-    // Convert blob to data URL for compatibility
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
+    // Use Blob URL directly for better memory efficiency (Issue #81 Item #3)
+    // Chrome 88+ (required for Manifest V3) supports blob: URLs in downloads
+    const blobUrl = URL.createObjectURL(blob);
 
-      chrome.downloads.download({
-        url: dataUrl,
-        filename: filename,
-        saveAs: true
-      }, (_downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error('[SidePanel] Download error:', chrome.runtime.lastError);
-          showNotification('Failed to download', 'error');
-          return;
-        }
-        showNotification('Download started');
-      });
-    };
+    chrome.downloads.download({
+      url: blobUrl,
+      filename: filename,
+      saveAs: true
+    }, (downloadId) => {
+      // Revoke Blob URL after download starts to free memory
+      URL.revokeObjectURL(blobUrl);
 
-    reader.onerror = () => {
-      console.error('[SidePanel] FileReader error:', reader.error);
-      showNotification('Failed to download', 'error');
-    };
+      if (chrome.runtime.lastError) {
+        console.error('[SidePanel] Download error:', chrome.runtime.lastError);
+        showNotification('Failed to download', 'error');
+        return;
+      }
 
-    reader.readAsDataURL(blob);
+      console.log('[SidePanel] Download started:', downloadId);
+      showNotification('Download started');
+    });
   } catch (error) {
     console.error('[SidePanel] Download error:', error);
     showNotification('Failed to download', 'error');
@@ -574,12 +709,19 @@ function loadViewPreferences() {
     applyFontFamily(savedFont);
   }
 
-  // Load font size
+  // Load font size with validation (Issue #79 Item #8)
   const savedSize = localStorage.getItem('sidepanel-font-size');
   if (savedSize) {
-    currentFontSize = parseInt(savedSize, 10);
-    previewView.style.fontSize = currentFontSize + '%';
-    markdownView.style.fontSize = currentFontSize + '%';
+    const parsedSize = parseInt(savedSize, 10);
+    // Validate range (min: 80, max: 150)
+    if (!isNaN(parsedSize) && parsedSize >= 80 && parsedSize <= 150) {
+      currentFontSize = parsedSize;
+      previewView.style.fontSize = currentFontSize + '%';
+      markdownView.style.fontSize = currentFontSize + '%';
+    } else {
+      console.warn('[SidePanel] Invalid font size in localStorage:', savedSize, '- using default');
+      localStorage.removeItem('sidepanel-font-size'); // Clean up invalid value
+    }
   }
 
   console.log('[SidePanel] Loaded view preferences:', { font: savedFont || 'default', size: currentFontSize + '%' });
@@ -588,6 +730,44 @@ function loadViewPreferences() {
 // Event listener references for proper cleanup (Issue #78)
 let currentClickListener = null;
 let currentMousedownListener = null;
+
+/**
+ * Validate URL for safe navigation
+ *
+ * Security (Issue #81 Item #4):
+ * - Prevent Open Redirect vulnerabilities
+ * - Only allow http: and https: protocols
+ * - Block javascript:, data:, file:, and other dangerous protocols
+ *
+ * @param {string} url - URL to validate
+ * @returns {boolean} True if URL is safe, false otherwise
+ */
+function isSafeUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+
+  // Allow relative URLs and hash links
+  if (url.startsWith('/') || url.startsWith('#')) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(url, window.location.href);
+    const protocol = parsed.protocol.toLowerCase();
+
+    // Only allow http and https
+    if (protocol === 'http:' || protocol === 'https:') {
+      return true;
+    }
+
+    console.warn('[SidePanel] Blocked unsafe URL protocol:', protocol, url);
+    return false;
+  } catch (error) {
+    console.warn('[SidePanel] Invalid URL:', url, error);
+    return false;
+  }
+}
 
 /**
  * Disable clickable links and cleanup event listeners
@@ -660,6 +840,12 @@ function enableClickableLinks() {
       return;
     }
 
+    // Validate URL for security (Issue #81 Item #4)
+    if (!isSafeUrl(href)) {
+      console.error('[SidePanel] Blocked unsafe link:', href);
+      return;
+    }
+
     // External link - detect modifier keys
     const newTab = e.ctrlKey || e.metaKey; // Ctrl (Win/Linux) or Cmd (Mac)
     const foreground = e.shiftKey; // Shift = foreground tab
@@ -692,6 +878,12 @@ function enableClickableLinks() {
 
     // Skip internal links
     if (href.startsWith('#')) return;
+
+    // Validate URL for security (Issue #81 Item #4)
+    if (!isSafeUrl(href)) {
+      console.error('[SidePanel] Blocked unsafe link (middle click):', href);
+      return;
+    }
 
     // Open in new background tab (browser standard for middle click)
     chrome.tabs.create({ url: href, active: false });
