@@ -3,7 +3,7 @@
  * Handles background tasks and message passing
  */
 
-/* global importScripts, storageManager, imageDownloader, fileExporter, translator */
+/* global importScripts, storageManager, imageDownloader, fileExporter */
 
 // Import storage modules
 importScripts('../storage/storage-manager.js', '../storage/image-downloader.js');
@@ -11,8 +11,8 @@ importScripts('../storage/storage-manager.js', '../storage/image-downloader.js')
 // Import export modules
 importScripts('../lib/jszip.min.js', '../export/file-exporter.js');
 
-// Import translation modules
-importScripts('../translation/translator.js');
+// Translation logic moved to Service Worker (Issue #70)
+// No longer importing translator.js to avoid CORS issues
 
 console.log('[Service Worker] Starting...');
 
@@ -211,12 +211,140 @@ async function handleSaveArticle(data) {
  * Handle translate article request
  * Phase 4: Implement translation with Anthropic API
  */
+
+/**
+ * Split markdown into sections by headings
+ *
+ * Architecture Decision (Issue #70):
+ * - Moved from translator.js to Service Worker
+ * - Avoids browser-based API calls
+ *
+ * @param {string} markdown - Markdown content
+ * @returns {Array} Array of sections with heading and content
+ */
+function splitMarkdownIntoSections(markdown) {
+  const sections = [];
+  const lines = markdown.split('\n');
+  let currentSection = [];
+  let currentHeading = null;
+
+  for (const line of lines) {
+    // Match H1 or H2 headings
+    const headingMatch = line.match(/^(#{1,2})\s+(.+)$/);
+
+    if (headingMatch) {
+      // Save previous section
+      if (currentSection.length > 0) {
+        sections.push({
+          heading: currentHeading,
+          content: currentSection.join('\n')
+        });
+      }
+
+      // Start new section
+      currentHeading = line;
+      currentSection = [line];
+    } else {
+      currentSection.push(line);
+    }
+  }
+
+  // Save last section
+  if (currentSection.length > 0) {
+    sections.push({
+      heading: currentHeading,
+      content: currentSection.join('\n')
+    });
+  }
+
+  return sections;
+}
+
+/**
+ * Translate a single section using Anthropic API
+ *
+ * Architecture Decision (Issue #70):
+ * - Move API calls to Service Worker to avoid CORS issues
+ * - Browsers cannot make direct API calls to Anthropic
+ * - Service Workers have no CORS restrictions
+ *
+ * @param {string} apiKey - Anthropic API key
+ * @param {string} sectionContent - Markdown section to translate
+ * @param {string} customPrompt - Optional custom prompt
+ * @returns {Promise<string>} Translated text
+ */
+async function translateSectionViaAPI(apiKey, sectionContent, customPrompt = null) {
+  let prompt;
+
+  // Use custom prompt if provided
+  if (customPrompt && customPrompt.includes('{content}')) {
+    prompt = customPrompt.replace('{content}', sectionContent);
+  } else {
+    // Default prompt
+    prompt = `以下のMarkdown形式のテキストを日本語に翻訳してください。
+
+要件:
+- Markdown記法はそのまま保持してください
+- 見出し、リスト、コードブロック、リンクなどのフォーマットを維持してください
+- 自然で読みやすい日本語に翻訳してください
+- 技術用語は適切に日本語化してください（例: "function" → "関数"）
+- URLやリンクは変更しないでください
+- 画像の参照パス（例: ./images/xxx.jpg）は変更しないでください
+- コードブロック内のコードは翻訳しないでください
+
+翻訳対象テキスト:
+${sectionContent}`;
+  }
+
+  const apiEndpoint = 'https://api.anthropic.com/v1/messages';
+  const model = 'claude-3-5-sonnet-20241022';
+
+  try {
+    const response = await fetch(apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: model,
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: prompt
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Service Worker] Anthropic API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText
+      });
+      throw new Error(`Translation API error: ${response.status} ${response.statusText}\n${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.content[0].text;
+  } catch (error) {
+    console.error('[Service Worker] translateSectionViaAPI error:', error);
+    throw error;
+  }
+}
+
 /**
  * Translate article with AI
  *
  * Bug Fix (Issue #63):
  * - Validate articleId to prevent IndexedDB errors
  * - Add type checking for defense in depth
+ *
+ * Architecture Change (Issue #70):
+ * - Move API calls from translator.js to Service Worker
+ * - Avoid CORS issues by calling API from Service Worker context
  */
 async function handleTranslateArticle(articleId) {
   try {
@@ -243,10 +371,13 @@ async function handleTranslateArticle(articleId) {
       throw new Error('Anthropic API key not configured. Please set it in Settings.');
     }
 
-    // Validate API key
-    const validation = translator.validateApiKey(settings.apiKey);
-    if (!validation.valid) {
-      throw new Error(validation.error);
+    // Validate API key format (Issue #70: Move validation to Service Worker)
+    if (!settings.apiKey.startsWith('sk-ant-')) {
+      throw new Error('Invalid API key format. Should start with "sk-ant-"');
+    }
+
+    if (settings.apiKey.length < 40) {
+      throw new Error('API key is too short');
     }
 
     // Get article from IndexedDB
@@ -259,29 +390,62 @@ async function handleTranslateArticle(articleId) {
       console.log('[Service Worker] Article already translated, re-translating...');
     }
 
-    // Create translator instance
-    const translatorInstance = translator.create(
-      settings.apiKey,
-      settings.translationPrompt || null
-    );
+    // Split markdown into sections (Issue #70: In Service Worker)
+    const sections = splitMarkdownIntoSections(article.markdown);
+    const translatedSections = [];
 
-    // Translate markdown
-    console.log('[Service Worker] Starting translation...');
-    const translatedMarkdown = await translatorInstance.translateMarkdown(
-      article.markdown,
-      (progress) => {
-        // Send progress updates to popup
+    console.log(`[Service Worker] Starting translation of ${sections.length} sections...`);
+
+    // Translate each section (Issue #70: Direct API calls from Service Worker)
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i];
+
+      // Send progress updates to popup
+      try {
         chrome.runtime.sendMessage({
           action: 'translationProgress',
           articleId,
-          progress
+          progress: {
+            current: i + 1,
+            total: sections.length,
+            heading: section.heading,
+            percentage: Math.round(((i + 1) / sections.length) * 100)
+          }
         }).catch(() => {
           // Ignore errors if popup is closed
         });
-
-        console.log(`[Service Worker] Translation progress: ${progress.percentage}% (${progress.current}/${progress.total})`);
+      } catch (error) {
+        // Ignore message sending errors
       }
-    );
+
+      console.log(`[Service Worker] Translating section ${i + 1}/${sections.length}...`);
+
+      try {
+        // Call API directly from Service Worker (Issue #70)
+        const translated = await translateSectionViaAPI(
+          settings.apiKey,
+          section.content,
+          settings.translationPrompt || null
+        );
+        translatedSections.push(translated);
+      } catch (error) {
+        console.error(`[Service Worker] Failed to translate section ${i + 1}:`, error);
+        // On error, use original text
+        translatedSections.push(section.content);
+
+        // Re-throw if it's an auth error
+        if (error.message.includes('401')) {
+          throw new Error('API authentication failed. Please check your API key in Settings.');
+        }
+      }
+
+      // Rate limiting: 500ms delay between sections
+      if (i < sections.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    const translatedMarkdown = translatedSections.join('\n\n');
 
     // Save translation
     await storageManager.saveTranslation(articleId, translatedMarkdown);
@@ -293,11 +457,13 @@ async function handleTranslateArticle(articleId) {
       originalPreserved: settings.preserveOriginal
     };
   } catch (error) {
-    // Enhanced error logging (Issue #63)
+    // Enhanced error logging (Issue #63, #71: Improve error serialization)
     console.error('[Service Worker] Translation error:', {
       articleId,
-      error: error.message,
-      stack: error.stack
+      errorMessage: error.message,
+      errorStack: error.stack,
+      errorString: String(error), // Issue #71: Serialize error properly
+      errorType: error.constructor.name
     });
     throw error;
   }
