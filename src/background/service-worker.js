@@ -273,6 +273,12 @@ function splitMarkdownIntoSections(markdown) {
  * - Required when calling Anthropic API from browser context (including Service Workers)
  * - Without this header, API returns 401 authentication_error
  *
+ * Bug Fix (Issue #79):
+ * - Validate API response structure before accessing data.content[0].text
+ * - Check for missing or empty content array
+ * - Verify text field exists and is a string
+ * - Prevent TypeError from unexpected API response format
+ *
  * @param {string} apiKey - Anthropic API key
  * @param {string} sectionContent - Markdown section to translate
  * @param {string} customPrompt - Optional custom prompt
@@ -334,6 +340,18 @@ ${sectionContent}`;
     }
 
     const data = await response.json();
+
+    // Validate API response structure (Issue #79)
+    if (!data.content || !Array.isArray(data.content) || data.content.length === 0) {
+      console.error('[Service Worker] Invalid Anthropic API response structure:', data);
+      throw new Error('Invalid Anthropic API response: missing or empty content array');
+    }
+
+    if (!data.content[0] || typeof data.content[0].text !== 'string') {
+      console.error('[Service Worker] Missing text in API response:', data.content[0]);
+      throw new Error('Invalid Anthropic API response: missing or invalid text field');
+    }
+
     return data.content[0].text;
   } catch (error) {
     console.error('[Service Worker] translateSectionViaAPI error:', error);
