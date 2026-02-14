@@ -107,8 +107,28 @@ async function handleExtract() {
         // Send data directly to SidePanel (primary flow)
         setTimeout(async () => {
           try {
-            // Fix data structure access (Issue #65)
+            // Fix data structure access (Issue #65, #69)
+            console.log('[Popup] Result structure:', {
+              success: result.success,
+              hasMetadata: !!result.metadata,
+              hasMarkdown: !!result.markdown,
+              hasArticleId: !!result.articleId,
+              hasImages: !!result.images
+            });
+
             const { metadata, markdown, articleId } = result;
+
+            // Validate required fields (Issue #69)
+            if (!metadata) {
+              console.error('[Popup] metadata is undefined. Full result:', result);
+              throw new Error('Failed to extract article metadata');
+            }
+
+            if (!markdown) {
+              console.error('[Popup] markdown is undefined. Full result:', result);
+              throw new Error('Failed to extract article content');
+            }
+
             await chrome.runtime.sendMessage({
               action: 'displayMarkdown',
               data: {
@@ -388,6 +408,17 @@ async function viewArticle(articleId) {
 
     console.log('[Popup] Article metadata:', response.article.metadata);
     console.log('[Popup] Article markdown length:', response.article.markdown?.length);
+
+    // Validate article structure (Issue #69)
+    if (!response.article.metadata) {
+      console.error('[Popup] Article metadata is undefined:', response.article);
+      throw new Error('Article data is corrupted: missing metadata');
+    }
+
+    if (!response.article.markdown) {
+      console.error('[Popup] Article markdown is undefined:', response.article);
+      throw new Error('Article data is corrupted: missing content');
+    }
 
     // Get active tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
