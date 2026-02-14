@@ -14,6 +14,86 @@ importScripts('../lib/jszip.min.js', '../export/file-exporter.js');
 // Translation logic moved to Service Worker (Issue #70)
 // No longer importing translator.js to avoid CORS issues
 
+/**
+ * Rate limiter for API requests
+ *
+ * Security (Issue #81 Item #5):
+ * - Prevents resource exhaustion from excessive API calls
+ * - Uses sliding window algorithm
+ * - Limits: 10 requests per minute, 50 requests per hour
+ */
+class ApiRateLimiter {
+  constructor() {
+    this.requests = []; // Array of timestamps
+    this.minuteLimit = 10; // Max requests per minute
+    this.hourLimit = 50; // Max requests per hour
+  }
+
+  /**
+   * Check if request is allowed and record it
+   * @returns {Object} { allowed: boolean, reason: string }
+   */
+  checkLimit() {
+    const now = Date.now();
+    const oneMinuteAgo = now - 60 * 1000;
+    const oneHourAgo = now - 60 * 60 * 1000;
+
+    // Remove old requests
+    this.requests = this.requests.filter(timestamp => timestamp > oneHourAgo);
+
+    // Count requests in last minute
+    const minuteRequests = this.requests.filter(timestamp => timestamp > oneMinuteAgo).length;
+    if (minuteRequests >= this.minuteLimit) {
+      return {
+        allowed: false,
+        reason: `Rate limit exceeded: ${minuteRequests}/${this.minuteLimit} requests in last minute. Please wait before translating again.`
+      };
+    }
+
+    // Count requests in last hour
+    const hourRequests = this.requests.length;
+    if (hourRequests >= this.hourLimit) {
+      return {
+        allowed: false,
+        reason: `Rate limit exceeded: ${hourRequests}/${this.hourLimit} requests in last hour. Please try again later.`
+      };
+    }
+
+    // Record this request
+    this.requests.push(now);
+
+    return {
+      allowed: true,
+      reason: `OK (${minuteRequests + 1}/${this.minuteLimit} per minute, ${hourRequests + 1}/${this.hourLimit} per hour)`
+    };
+  }
+
+  /**
+   * Get current rate limit status
+   * @returns {Object} Statistics about current usage
+   */
+  getStatus() {
+    const now = Date.now();
+    const oneMinuteAgo = now - 60 * 1000;
+    const oneHourAgo = now - 60 * 60 * 1000;
+
+    this.requests = this.requests.filter(timestamp => timestamp > oneHourAgo);
+
+    const minuteRequests = this.requests.filter(timestamp => timestamp > oneMinuteAgo).length;
+    const hourRequests = this.requests.length;
+
+    return {
+      minuteRequests,
+      minuteLimit: this.minuteLimit,
+      hourRequests,
+      hourLimit: this.hourLimit
+    };
+  }
+}
+
+// Global rate limiter instance (Issue #81 Item #5)
+const apiRateLimiter = new ApiRateLimiter();
+
 console.log('[Service Worker] Starting...');
 
 // Extension installation/update handler
@@ -386,6 +466,14 @@ async function handleTranslateArticle(articleId) {
     if (!articleId || typeof articleId !== 'number' || isNaN(articleId) || articleId <= 0) {
       throw new Error(`Invalid article ID: ${articleId} (type: ${typeof articleId})`);
     }
+
+    // Check rate limit (Issue #81 Item #5)
+    const rateLimitCheck = apiRateLimiter.checkLimit();
+    if (!rateLimitCheck.allowed) {
+      console.warn('[Service Worker] Translation blocked by rate limiter:', rateLimitCheck.reason);
+      throw new Error(rateLimitCheck.reason);
+    }
+    console.log('[Service Worker] Rate limit check passed:', rateLimitCheck.reason);
 
     // Get settings
     const settings = await chrome.storage.sync.get({
