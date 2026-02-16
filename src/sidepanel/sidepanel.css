@@ -199,6 +199,44 @@ body {
   text-decoration: underline;
 }
 
+/* Translation Toggle (Issue #84) */
+.translation-toggle {
+  display: flex;
+  margin-bottom: 12px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.translation-toggle.hidden {
+  display: none !important;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 8px 16px;
+  border: none;
+  background-color: #fff;
+  color: #5f6368;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.toggle-btn:first-child {
+  border-right: 1px solid #dadce0;
+}
+
+.toggle-btn:hover {
+  background-color: #f8f9fa;
+}
+
+.toggle-btn.active {
+  background-color: #1a73e8;
+  color: #fff;
+}
+
 /* View Tabs */
 .view-tabs {
   display: flex;

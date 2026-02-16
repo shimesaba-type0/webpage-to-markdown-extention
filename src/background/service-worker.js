@@ -185,6 +185,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     return true; // Indicates async response
   }
+
+  // Issue #84: Forward translation completion to SidePanel
+  if (request.action === 'translationComplete') {
+    chrome.runtime.sendMessage(request)
+      .then(() => {
+        console.log('[Service Worker] Translation completion forwarded to SidePanel');
+        sendResponse({ success: true });
+      })
+      .catch(error => {
+        console.warn('[Service Worker] Could not forward translation to SidePanel:', error.message);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
 });
 
 /**
