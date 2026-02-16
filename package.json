@@ -6,11 +6,14 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:e2e": "node e2e-test.js",
+    "test:e2e:auto": "xvfb-run -a node e2e-automated-test.js",
     "lint": "eslint src/**/*.js",
     "lint:fix": "eslint src/**/*.js --fix",
     "validate": "npm run lint && npm run test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/chrome": "^0.0.268",
     "@types/jest": "^29.5.12",
     "eslint": "^8.57.0",
