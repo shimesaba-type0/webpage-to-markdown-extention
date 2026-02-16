@@ -39,6 +39,9 @@ const translationToggle = document.getElementById('translation-toggle');
 const showOriginalBtn = document.getElementById('show-original-btn');
 const showTranslationBtn = document.getElementById('show-translation-btn');
 
+// Translation Status DOM Element (Issue #88)
+const translationStatus = document.getElementById('translation-status');
+
 // State
 let currentMarkdown = '';
 let currentTranslatedMarkdown = null; // Issue #84: Store translated content
@@ -778,19 +781,27 @@ async function updateTranslateButtonVisibility(hasTranslation) {
 /**
  * Handle translate button click in SidePanel (Issue #85)
  *
+ * Bug Fix (Issue #88):
+ * - Improved user feedback during translation process
+ * - Clear error messages with actionable guidance
+ * - Loading state with spinner and progress indicator
+ * - Success confirmation message
+ *
  * Sends translation request to service worker for the current article.
  * Shows progress feedback and auto-switches to translated view on completion.
  */
 async function handleTranslateArticle() {
   if (!currentArticleId) {
     console.warn('[SidePanel] No article ID available for translation');
+    showTranslationStatus('error', 'Cannot translate: No article loaded');
     return;
   }
 
   try {
-    // Disable button and show loading state
+    // Show loading state (Issue #88)
     translateBtn.disabled = true;
     translateBtn.title = 'Translating...';
+    showTranslationStatus('loading', 'Translating to Japanese... This may take a minute.');
 
     console.log('[SidePanel] Requesting translation for article:', currentArticleId);
 
@@ -800,12 +811,16 @@ async function handleTranslateArticle() {
     });
 
     if (!response || !response.success) {
-      throw new Error(response?.error || 'Translation failed');
+      const errorMsg = response?.error || 'Translation failed';
+      throw new Error(errorMsg);
     }
 
     // Translation succeeded - update state
     if (response.translation && response.translation.translatedMarkdown) {
       currentTranslatedMarkdown = response.translation.translatedMarkdown;
+
+      // Show success message (Issue #88)
+      showTranslationStatus('success', '✓ Translation completed successfully!');
 
       // Show translation toggle and switch to translated view
       translationToggle.classList.remove('hidden');
@@ -814,18 +829,69 @@ async function handleTranslateArticle() {
       // Hide translate button (translation is now done)
       translateBtn.classList.add('hidden');
 
+      // Auto-hide success message after 3 seconds
+      setTimeout(() => {
+        hideTranslationStatus();
+      }, 3000);
+
       console.log('[SidePanel] Translation completed and displayed');
     }
   } catch (error) {
     console.error('[SidePanel] Translation error:', error);
-    // Show error briefly via button title
-    translateBtn.title = `Translation failed: ${error.message}`;
+
+    // Show user-friendly error message with guidance (Issue #88)
+    let errorHtml = '';
+    if (error.message.includes('API key not configured')) {
+      errorHtml = '⚠️ Translation requires an API key. Please <a href="#" id="open-settings-link">open Settings</a> to configure your Anthropic API key.';
+    } else if (error.message.includes('disabled')) {
+      errorHtml = '⚠️ Translation feature is disabled. Please <a href="#" id="open-settings-link">enable it in Settings</a>.';
+    } else if (error.message.includes('Rate limit exceeded')) {
+      errorHtml = `⚠️ ${error.message}`;
+    } else if (error.message.includes('authentication failed')) {
+      errorHtml = '⚠️ API authentication failed. Please check your API key in <a href="#" id="open-settings-link">Settings</a>.';
+    } else {
+      errorHtml = `⚠️ Translation failed: ${error.message}`;
+    }
+
+    showTranslationStatus('error', errorHtml);
+
+    // Add event listener for settings link if present
     setTimeout(() => {
-      translateBtn.title = 'Translate to Japanese';
-    }, 5000);
-  } finally {
+      const settingsLink = document.getElementById('open-settings-link');
+      if (settingsLink) {
+        settingsLink.addEventListener('click', (e) => {
+          e.preventDefault();
+          chrome.runtime.openOptionsPage();
+        });
+      }
+    }, 100);
+
+    // Re-enable button so user can retry
     translateBtn.disabled = false;
+    translateBtn.title = 'Translate to Japanese';
   }
+}
+
+/**
+ * Show translation status message (Issue #88)
+ *
+ * @param {string} type - 'loading', 'success', or 'error'
+ * @param {string} message - HTML message to display
+ */
+function showTranslationStatus(type, message) {
+  translationStatus.className = `translation-status ${type}`;
+  translationStatus.innerHTML = message;
+  translationStatus.classList.remove('hidden');
+  console.log(`[SidePanel] Translation status: ${type} - ${message}`);
+}
+
+/**
+ * Hide translation status message (Issue #88)
+ */
+function hideTranslationStatus() {
+  translationStatus.classList.add('hidden');
+  translationStatus.className = 'translation-status hidden';
+  translationStatus.innerHTML = '';
 }
 
 /**
