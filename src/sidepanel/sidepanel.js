@@ -26,6 +26,7 @@ const markdownCode = document.getElementById('markdown-code');
 const copyBtn = document.getElementById('copy-btn');
 const downloadBtn = document.getElementById('download-btn');
 const retryBtn = document.getElementById('retry-btn');
+const translateBtn = document.getElementById('translate-btn'); // Issue #85
 
 // View Controls (Issue #51)
 const reloadBtn = document.getElementById('reload-btn');
@@ -33,11 +34,19 @@ const fontSelect = document.getElementById('font-select');
 const fontDecreaseBtn = document.getElementById('font-decrease-btn');
 const fontIncreaseBtn = document.getElementById('font-increase-btn');
 
+// Translation Toggle DOM Elements (Issue #84)
+const translationToggle = document.getElementById('translation-toggle');
+const showOriginalBtn = document.getElementById('show-original-btn');
+const showTranslationBtn = document.getElementById('show-translation-btn');
+
 // State
 let currentMarkdown = '';
+let currentTranslatedMarkdown = null; // Issue #84: Store translated content
 let currentMetadata = null;
+let currentArticleId = null; // Issue #85: Track current article for translation
 let currentBlobUrls = []; // Store blob URLs for cleanup (Issue #25)
 let currentFontSize = 100; // Percentage (Issue #51)
+let isShowingTranslation = false; // Issue #84: Track which view is active
 
 // Initialize
 init();
@@ -61,6 +70,13 @@ async function init() {
   fontDecreaseBtn.addEventListener('click', () => adjustFontSize(-10));
   fontIncreaseBtn.addEventListener('click', () => adjustFontSize(10));
 
+  // Translation toggle event listeners (Issue #84)
+  showOriginalBtn.addEventListener('click', () => switchTranslationView(false));
+  showTranslationBtn.addEventListener('click', () => switchTranslationView(true));
+
+  // Translate button event listener (Issue #85)
+  translateBtn.addEventListener('click', handleTranslateArticle);
+
   // Load saved view preferences (Issue #51)
   loadViewPreferences();
 
@@ -75,6 +91,19 @@ async function init() {
 
     if (request.action === 'showError') {
       showError(request.error);
+      sendResponse({ success: true });
+    }
+
+    // Issue #84: Receive translation after it completes
+    if (request.action === 'translationComplete') {
+      if (request.data && request.data.translatedMarkdown) {
+        currentTranslatedMarkdown = request.data.translatedMarkdown;
+        // Show translation toggle
+        translationToggle.classList.remove('hidden');
+        // Auto-switch to translated view
+        switchTranslationView(true);
+        console.log('[SidePanel] Translation received and displayed');
+      }
       sendResponse({ success: true });
     }
   });
@@ -216,7 +245,7 @@ function displayMarkdown(data) {
       throw new Error('No data provided to displayMarkdown');
     }
 
-    const { metadata, markdown, images = [] } = data;
+    const { metadata, markdown, images = [], translatedMarkdown = null, hasTranslation = false, articleId = null } = data;
 
     // Validate required fields
     if (!metadata) {
@@ -228,6 +257,24 @@ function displayMarkdown(data) {
 
     currentMarkdown = markdown;
     currentMetadata = metadata;
+    currentArticleId = articleId; // Issue #85: Track article ID for translation
+
+    // Issue #84: Handle translated content
+    currentTranslatedMarkdown = translatedMarkdown || null;
+    isShowingTranslation = false;
+
+    // Show/hide translation toggle based on whether translation exists
+    if (currentTranslatedMarkdown && hasTranslation) {
+      translationToggle.classList.remove('hidden');
+    } else {
+      translationToggle.classList.add('hidden');
+    }
+    // Reset toggle buttons to original
+    showOriginalBtn.classList.add('active');
+    showTranslationBtn.classList.remove('active');
+
+    // Issue #85: Show translate button if article has an ID and no translation yet
+    updateTranslateButtonVisibility(hasTranslation);
 
     // Update metadata
     articleTitle.textContent = metadata.title || 'Untitled';
@@ -503,10 +550,16 @@ function switchTab(tab) {
 
 /**
  * Copy markdown to clipboard
+ *
+ * Bug Fix (Issue #84):
+ * - Copy whichever version (original or translated) is currently displayed
  */
 async function copyMarkdown() {
   try {
-    await navigator.clipboard.writeText(currentMarkdown);
+    const markdownToCopy = isShowingTranslation && currentTranslatedMarkdown
+      ? currentTranslatedMarkdown
+      : currentMarkdown;
+    await navigator.clipboard.writeText(markdownToCopy);
     showNotification('Copied to clipboard!');
   } catch (error) {
     console.error('[SidePanel] Copy error:', error);
@@ -516,11 +569,19 @@ async function copyMarkdown() {
 
 /**
  * Download markdown as file
+ *
+ * Bug Fix (Issue #84):
+ * - Download translated content when viewing translation
+ * - Add _ja suffix to filename for translated downloads
  */
 function downloadMarkdown() {
   try {
-    const filename = generateFilename(currentMetadata);
-    const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
+    // Issue #84: Download whichever version is currently being viewed
+    const markdownToDownload = isShowingTranslation && currentTranslatedMarkdown
+      ? currentTranslatedMarkdown
+      : currentMarkdown;
+    const filename = generateFilename(currentMetadata, isShowingTranslation && currentTranslatedMarkdown);
+    const blob = new Blob([markdownToDownload], { type: 'text/markdown' });
 
     // Use Blob URL directly for better memory efficiency (Issue #81 Item #3)
     // Chrome 88+ (required for Manifest V3) supports blob: URLs in downloads
@@ -551,8 +612,14 @@ function downloadMarkdown() {
 
 /**
  * Generate filename for markdown download
+ *
+ * Bug Fix (Issue #84):
+ * - Add _ja suffix for translated content downloads
+ *
+ * @param {Object} metadata - Article metadata
+ * @param {boolean} isTranslation - Whether this is a translation download
  */
-function generateFilename(metadata) {
+function generateFilename(metadata, isTranslation = false) {
   const title = metadata?.title || 'article';
   const sanitized = title
     .replace(/[^a-z0-9\s-]/gi, '')
@@ -560,7 +627,8 @@ function generateFilename(metadata) {
     .toLowerCase()
     .substring(0, 50);
   const timestamp = new Date().toISOString().split('T')[0];
-  return `${sanitized}-${timestamp}.md`;
+  const suffix = isTranslation ? '_ja' : '';
+  return `${sanitized}${suffix}-${timestamp}.md`;
 }
 
 /**
@@ -635,11 +703,129 @@ function reloadCurrentArticle() {
 
   console.log('[SidePanel] Reloading current article');
 
-  // Re-display the current article
+  // Re-display the current article with translation data preserved
   displayMarkdown({
     metadata: currentMetadata,
-    markdown: currentMarkdown
+    markdown: currentMarkdown,
+    translatedMarkdown: currentTranslatedMarkdown,
+    hasTranslation: !!currentTranslatedMarkdown,
+    articleId: currentArticleId
   });
+}
+
+/**
+ * Switch between original and translated content (Issue #84)
+ *
+ * @param {boolean} showTranslation - True to show translation, false for original
+ */
+function switchTranslationView(showTranslation) {
+  if (showTranslation && !currentTranslatedMarkdown) {
+    console.warn('[SidePanel] No translated content available');
+    return;
+  }
+
+  isShowingTranslation = showTranslation;
+
+  // Update toggle button states
+  if (showTranslation) {
+    showOriginalBtn.classList.remove('active');
+    showTranslationBtn.classList.add('active');
+  } else {
+    showOriginalBtn.classList.add('active');
+    showTranslationBtn.classList.remove('active');
+  }
+
+  // Render the appropriate content
+  const markdownToRender = showTranslation ? currentTranslatedMarkdown : currentMarkdown;
+  renderMarkdown(markdownToRender);
+
+  // Enable clickable links for the new content
+  enableClickableLinks();
+
+  console.log(`[SidePanel] Switched to ${showTranslation ? 'translated' : 'original'} view`);
+}
+
+/**
+ * Update translate button visibility (Issue #85)
+ *
+ * Shows translate button when:
+ * - Article has an ID (saved in IndexedDB)
+ * - Article doesn't already have a translation
+ * - Translation feature is enabled in settings
+ *
+ * @param {boolean} hasTranslation - Whether article already has translation
+ */
+async function updateTranslateButtonVisibility(hasTranslation) {
+  try {
+    if (!currentArticleId || hasTranslation) {
+      translateBtn.classList.add('hidden');
+      return;
+    }
+
+    // Check if translation is enabled in settings
+    const settings = await chrome.storage.sync.get({ enableTranslation: false });
+    if (settings.enableTranslation) {
+      translateBtn.classList.remove('hidden');
+    } else {
+      translateBtn.classList.add('hidden');
+    }
+  } catch (error) {
+    console.warn('[SidePanel] Could not check translation settings:', error);
+    translateBtn.classList.add('hidden');
+  }
+}
+
+/**
+ * Handle translate button click in SidePanel (Issue #85)
+ *
+ * Sends translation request to service worker for the current article.
+ * Shows progress feedback and auto-switches to translated view on completion.
+ */
+async function handleTranslateArticle() {
+  if (!currentArticleId) {
+    console.warn('[SidePanel] No article ID available for translation');
+    return;
+  }
+
+  try {
+    // Disable button and show loading state
+    translateBtn.disabled = true;
+    translateBtn.title = 'Translating...';
+
+    console.log('[SidePanel] Requesting translation for article:', currentArticleId);
+
+    const response = await chrome.runtime.sendMessage({
+      action: 'translateArticle',
+      articleId: currentArticleId
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Translation failed');
+    }
+
+    // Translation succeeded - update state
+    if (response.translation && response.translation.translatedMarkdown) {
+      currentTranslatedMarkdown = response.translation.translatedMarkdown;
+
+      // Show translation toggle and switch to translated view
+      translationToggle.classList.remove('hidden');
+      switchTranslationView(true);
+
+      // Hide translate button (translation is now done)
+      translateBtn.classList.add('hidden');
+
+      console.log('[SidePanel] Translation completed and displayed');
+    }
+  } catch (error) {
+    console.error('[SidePanel] Translation error:', error);
+    // Show error briefly via button title
+    translateBtn.title = `Translation failed: ${error.message}`;
+    setTimeout(() => {
+      translateBtn.title = 'Translate to Japanese';
+    }, 5000);
+  } finally {
+    translateBtn.disabled = false;
+  }
 }
 
 /**

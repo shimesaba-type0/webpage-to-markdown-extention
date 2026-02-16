@@ -495,10 +495,15 @@ async function viewArticle(articleId) {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     // Store article data as fallback for SidePanel init() (Rev2 feedback)
+    // Bug Fix (Issue #84): Include translatedMarkdown and hasTranslation
+    // Issue #85: Include articleId for translate button in SidePanel
     const viewingArticle = {
       metadata: response.article.metadata,
       markdown: response.article.markdown,
-      images: response.article.images || []
+      images: response.article.images || [],
+      translatedMarkdown: response.article.translatedMarkdown || null,
+      hasTranslation: response.article.hasTranslation || false,
+      articleId: articleId
     };
     await chrome.storage.local.set({ viewingArticle });
 
@@ -567,6 +572,23 @@ async function translateArticle(articleId) {
     }
 
     showStatus('✓ Translation completed!', 'success');
+
+    // Bug Fix (Issue #84): Send translated content to SidePanel
+    if (response.translation && response.translation.translatedMarkdown) {
+      try {
+        await chrome.runtime.sendMessage({
+          action: 'translationComplete',
+          data: {
+            articleId: articleId,
+            translatedMarkdown: response.translation.translatedMarkdown
+          }
+        });
+        console.log('[Popup] Translation sent to SidePanel');
+      } catch (error) {
+        // SidePanel may not be open, which is fine
+        console.warn('[Popup] Could not send translation to SidePanel:', error.message);
+      }
+    }
 
     // Reload article list to show updated badge
     setTimeout(() => {
