@@ -199,6 +199,60 @@ body {
   text-decoration: underline;
 }
 
+/* Translation Status Message (Issue #88) */
+.translation-status {
+  padding: 12px 16px;
+  margin: 16px 0;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.translation-status.hidden {
+  display: none;
+}
+
+.translation-status.loading {
+  background-color: #e8f0fe;
+  color: #1967d2;
+  border: 1px solid #d2e3fc;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.translation-status.loading::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border: 2px solid #d2e3fc;
+  border-top: 2px solid #1967d2;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.translation-status.success {
+  background-color: #e6f4ea;
+  color: #137333;
+  border: 1px solid #c6e1c6;
+}
+
+.translation-status.error {
+  background-color: #fce8e6;
+  color: #c5221f;
+  border: 1px solid #f6aea9;
+}
+
+.translation-status a {
+  color: inherit;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.translation-status a:hover {
+  text-decoration: none;
+}
+
 /* Translation Toggle (Issue #84) */
 .translation-toggle {
   display: flex;
