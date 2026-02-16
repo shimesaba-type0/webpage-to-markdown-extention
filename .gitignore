@@ -21,3 +21,8 @@ build/
 
 # OS files
 Thumbs.db
+
+# Playwright
+.playwright-data/
+playwright-report/
+test-results/
