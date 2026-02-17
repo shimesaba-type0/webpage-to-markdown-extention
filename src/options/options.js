@@ -31,11 +31,13 @@ async function loadSettings() {
     translationPrompt: DEFAULT_TRANSLATION_PROMPT,
     includeMetadata: true,
     autoTranslate: false,
-    downloadImages: false  // Issue #38: Default to disabled for user consent
+    downloadImages: false,  // Issue #38: Default to disabled for user consent
+    translationModel: 'claude-haiku-4-5-20251001'  // Issue #99: Default model
   });
 
   document.getElementById('enable-translation').checked = settings.enableTranslation;
   document.getElementById('api-key').value = settings.apiKey;
+  document.getElementById('translation-model').value = settings.translationModel;
   document.getElementById('preserve-original').checked = settings.preserveOriginal;
   document.getElementById('translation-prompt').value = settings.translationPrompt;
   document.getElementById('include-metadata').checked = settings.includeMetadata;
@@ -51,7 +53,8 @@ async function saveSettings() {
     translationPrompt: document.getElementById('translation-prompt').value,
     includeMetadata: document.getElementById('include-metadata').checked,
     autoTranslate: document.getElementById('auto-translate').checked,
-    downloadImages: document.getElementById('download-images').checked  // Issue #38
+    downloadImages: document.getElementById('download-images').checked,  // Issue #38
+    translationModel: document.getElementById('translation-model').value  // Issue #99
   };
 
   await chrome.storage.sync.set(settings);
