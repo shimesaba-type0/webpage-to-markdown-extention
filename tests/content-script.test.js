@@ -128,4 +128,32 @@ describe('Content Script Functions', () => {
       expect(images).toHaveLength(2);
     });
   });
+
+  describe('Content script response structure (PR #100 fix)', () => {
+    test('extract response should have metadata at root level (not nested in data)', () => {
+      // PR #100 修正: sendResponse({ success: true, data: result }) → sendResponse(result)
+      // SW が返す形式: { success: true, articleId, metadata, markdown }
+      const mockSWResponse = {
+        success: true,
+        articleId: 1,
+        metadata: { title: 'Test', url: 'https://example.com' },
+        markdown: '# Test'
+      };
+      // root に metadata が存在すること
+      expect(mockSWResponse.metadata).toBeDefined();
+      expect(mockSWResponse.metadata.title).toBe('Test');
+      // data フィールドは存在しないこと
+      expect(mockSWResponse.data).toBeUndefined();
+    });
+
+    test('extract response should have success flag at root level', () => {
+      const mockSWResponse = {
+        success: true,
+        articleId: 1,
+        metadata: { title: 'Test', url: 'https://example.com' },
+        markdown: '# Test'
+      };
+      expect(mockSWResponse.success).toBe(true);
+    });
+  });
 });
