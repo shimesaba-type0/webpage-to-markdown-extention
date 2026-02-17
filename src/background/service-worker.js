@@ -178,7 +178,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: true });
       })
       .catch(error => {
-        console.error('[Service Worker] Failed to forward message to SidePanel:', error);
+        console.warn('[Service Worker] Could not forward message to SidePanel (may not be open yet):', error.message);
         // Note: SidePanel may not be open yet, which is expected behavior
         // Message will be picked up from storage fallback
         sendResponse({ success: false, error: error.message });
