@@ -201,17 +201,33 @@ async function extractContent() {
     try {
       await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
     } catch (error) {
-      // Content script not available
-      throw new Error('Content script not loaded. Please refresh the page and try again.');
+      // Content script not available, attempt programmatic injection (Issue #105)
+      try {
+        console.log('[SidePanel] Content script not ready, attempting programmatic injection...');
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: [
+            'src/lib/Readability.js',
+            'src/lib/turndown-simple.js',
+            'src/content/content-script.js'
+          ]
+        });
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
+        console.log('[SidePanel] Content script injected successfully');
+      } catch (injectError) {
+        console.error('[SidePanel] Failed to inject content script:', injectError);
+        throw new Error('Content script not loaded. Please refresh the page and try again.');
+      }
     }
 
     // Send extract command to content script
     const result = await chrome.tabs.sendMessage(tab.id, { action: 'extract' });
 
-    if (result.success && result.data) {
-      // Extract metadata and markdown from the response
-      const { metadata, markdown } = result.data;
-      displayMarkdown({ metadata, markdown });
+    if (result.success && result.metadata) {
+      // Extract metadata and markdown from the response (Issue #107)
+      const { metadata, markdown, articleId } = result;
+      displayMarkdown({ metadata, markdown, articleId });
     } else {
       throw new Error(result.error || 'Extraction failed');
     }
