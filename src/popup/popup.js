@@ -129,11 +129,30 @@ async function handleExtract() {
       return; // Silently exit
     }
 
-    // Check if content script is ready
+    // Check if content script is ready, inject if not (Issue #94)
     try {
       await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
     } catch (error) {
-      throw new Error('Content script not loaded. Please refresh the page and try again.');
+      // Content script not loaded - try to inject programmatically
+      try {
+        console.log('[Popup] Content script not ready, attempting programmatic injection...');
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: [
+            'src/lib/Readability.js',
+            'src/lib/turndown-simple.js',
+            'src/content/content-script.js'
+          ]
+        });
+        // Wait for scripts to initialize
+        await new Promise(resolve => setTimeout(resolve, 300));
+        // Verify injection succeeded
+        await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
+        console.log('[Popup] Content script injected successfully');
+      } catch (injectError) {
+        console.error('[Popup] Failed to inject content script:', injectError);
+        throw new Error('Content script not loaded. Please refresh the page and try again.');
+      }
     }
 
     // Send extract command to content script

@@ -7,7 +7,7 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'extract') {
     extractContent()
-      .then(result => sendResponse({ success: true, data: result }))
+      .then(result => sendResponse(result))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true; // Indicates async response
   }
