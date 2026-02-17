@@ -386,7 +386,7 @@ function splitMarkdownIntoSections(markdown) {
  * @param {string} customPrompt - Optional custom prompt
  * @returns {Promise<string>} Translated text
  */
-async function translateSectionViaAPI(apiKey, sectionContent, customPrompt = null) {
+async function translateSectionViaAPI(apiKey, sectionContent, customPrompt = null, model = 'claude-haiku-4-5-20251001') {
   let prompt;
 
   // Use custom prompt if provided
@@ -410,7 +410,6 @@ ${sectionContent}`;
   }
 
   const apiEndpoint = 'https://api.anthropic.com/v1/messages';
-  const model = 'claude-3-5-sonnet-20241022';
 
   try {
     const response = await fetch(apiEndpoint, {
@@ -432,13 +431,27 @@ ${sectionContent}`;
     });
 
     if (!response.ok) {
-      // Security: Don't read error body as it may contain sensitive headers (Issue #81)
+      let errorInfo = {};
+      try {
+        const errorBody = await response.json();
+        if (errorBody.error) {
+          errorInfo = {
+            type: errorBody.error.type,
+            message: errorBody.error.message
+          };
+        }
+      } catch (parseError) {
+        // JSON parse failed, continue without error details
+      }
       console.error('[Service Worker] Anthropic API error:', {
         status: response.status,
-        statusText: response.statusText
-        // Error body intentionally not logged to prevent API key exposure
+        statusText: response.statusText,
+        ...errorInfo
       });
-      throw new Error(`Translation API error: ${response.status} ${response.statusText}`);
+      const errorMessage = errorInfo.message
+        ? `Translation API error: ${response.status} - ${errorInfo.message}`
+        : `Translation API error: ${response.status} ${response.statusText}`;
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -494,7 +507,8 @@ async function handleTranslateArticle(articleId) {
       enableTranslation: false,
       apiKey: '',
       translationPrompt: '',
-      preserveOriginal: true
+      preserveOriginal: true,
+      translationModel: 'claude-haiku-4-5-20251001'
     });
 
     if (!settings.enableTranslation) {
@@ -565,7 +579,8 @@ async function handleTranslateArticle(articleId) {
         const translated = await translateSectionViaAPI(
           settings.apiKey,
           section.content,
-          settings.translationPrompt || null
+          settings.translationPrompt || null,
+          settings.translationModel || 'claude-haiku-4-5-20251001'
         );
         translatedSections.push(translated);
       } catch (error) {

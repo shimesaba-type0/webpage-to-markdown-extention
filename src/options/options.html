@@ -32,6 +32,16 @@
       </p>
 
       <div class="form-group">
+        <label for="translation-model">AI Model:</label>
+        <select id="translation-model">
+          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Default - Fast &amp; Economical)</option>
+          <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Balanced)</option>
+          <option value="claude-opus-4-6">Claude Opus 4.6 (Most Capable)</option>
+        </select>
+        <p class="help-text">Select the AI model for translation. Haiku 4.5 is recommended for most use cases.</p>
+      </div>
+
+      <div class="form-group">
         <label>
           <input type="checkbox" id="preserve-original">
           Always keep original text (recommended)
