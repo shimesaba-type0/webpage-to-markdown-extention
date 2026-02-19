@@ -29,10 +29,13 @@ const downloadImagesToggle = document.getElementById('download-images-toggle');
 async function sendToSidePanelWithRetry(data, maxRetries = 3, retryDelay = 200) {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      await chrome.runtime.sendMessage({
+      const response = await chrome.runtime.sendMessage({
         action: 'displayMarkdown',
         data: data
       });
+      if (!response || !response.success) {
+        throw new Error(response?.error || 'SidePanel not ready');
+      }
       console.log(`[Popup] Message sent to SidePanel successfully on attempt ${i + 1}`);
       return true;
     } catch (error) {
@@ -129,6 +132,22 @@ async function handleExtract() {
       return; // Silently exit
     }
 
+    // Open side panel early to satisfy user gesture requirement (Issue #106)
+    // sidePanel.open() must be called during the user gesture (click) handler
+    // before any async operations like content script injection or extraction
+    try {
+      if (chrome.sidePanel && chrome.sidePanel.setOptions) {
+        await chrome.sidePanel.setOptions({
+          tabId: tab.id,
+          path: 'src/sidepanel/sidepanel.html',
+          enabled: true
+        });
+      }
+      await chrome.sidePanel.open({ tabId: tab.id });
+    } catch (error) {
+      console.warn('[Popup] Could not open side panel early:', error.message);
+    }
+
     // Check if content script is ready, inject if not (Issue #94)
     try {
       await chrome.tabs.sendMessage(tab.id, { action: 'getStatus' });
@@ -163,27 +182,8 @@ async function handleExtract() {
     if (result.success) {
       showStatus('✓ Content extracted!', 'success');
 
-      // Open side panel and send data
+      // Send data to SidePanel (already opened above)
       try {
-        // Set flag as fallback (Issue #27: Architecture unification)
-        // Primary: Direct message passing
-        // Fallback: pendingExtraction flag if SidePanel not ready
-        await chrome.storage.local.set({ pendingExtraction: true });
-
-        // Configure side panel to be tab-specific (Issue #24, #43)
-        // This ensures the panel only appears for this tab and closes when tab is closed
-        if (chrome.sidePanel && chrome.sidePanel.setOptions) {
-          await chrome.sidePanel.setOptions({
-            tabId: tab.id,
-            path: 'src/sidepanel/sidepanel.html',
-            enabled: true
-          });
-        }
-
-        // Open side panel for this specific tab (Issue #43)
-        // Using tabId instead of windowId for better tab-specific behavior
-        await chrome.sidePanel.open({ tabId: tab.id });
-
         // Fix data structure access (Issue #65, #69)
         console.log('[Popup] Result structure:', {
           success: result.success,
