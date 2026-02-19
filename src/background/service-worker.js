@@ -498,7 +498,10 @@ async function handleTranslateArticle(articleId) {
     // Get settings
     const settings = await chrome.storage.sync.get({
       enableTranslation: false,
+      translationProvider: 'anthropic',
       apiKey: '',
+      geminiApiKey: '',
+      geminiModel: 'gemini-2.0-flash',
       translationPrompt: '',
       preserveOriginal: true,
       translationModel: 'claude-haiku-4-5-20251001'
@@ -508,17 +511,26 @@ async function handleTranslateArticle(articleId) {
       throw new Error('Translation feature is disabled. Please enable it in Settings.');
     }
 
-    if (!settings.apiKey) {
-      throw new Error('Anthropic API key not configured. Please set it in Settings.');
-    }
+    const provider = settings.translationProvider || 'anthropic';
 
-    // Validate API key format (Issue #70: Move validation to Service Worker)
-    if (!settings.apiKey.startsWith('sk-ant-')) {
-      throw new Error('Invalid API key format. Should start with "sk-ant-"');
-    }
-
-    if (settings.apiKey.length < 40) {
-      throw new Error('API key is too short');
+    if (provider === 'gemini') {
+      if (!settings.geminiApiKey) {
+        throw new Error('Gemini API key not configured. Please set it in Settings.');
+      }
+      if (!settings.geminiApiKey.startsWith('AIza')) {
+        throw new Error('Invalid Gemini API key format. Should start with "AIza"');
+      }
+    } else {
+      if (!settings.apiKey) {
+        throw new Error('Anthropic API key not configured. Please set it in Settings.');
+      }
+      // Validate API key format (Issue #70: Move validation to Service Worker)
+      if (!settings.apiKey.startsWith('sk-ant-')) {
+        throw new Error('Invalid API key format. Should start with "sk-ant-"');
+      }
+      if (settings.apiKey.length < 40) {
+        throw new Error('API key is too short');
+      }
     }
 
     // Get article from IndexedDB
@@ -545,13 +557,22 @@ async function handleTranslateArticle(articleId) {
 
       let translated;
       try {
-        // Call API directly from Service Worker (Issue #70)
-        translated = await translateSectionViaAPI(
-          settings.apiKey,
-          section.content,
-          settings.translationPrompt || null,
-          settings.translationModel || 'claude-haiku-4-5-20251001'
-        );
+        // Call API directly from Service Worker (Issue #70, #66)
+        if (provider === 'gemini') {
+          translated = await translateSectionViaGeminiAPI(
+            settings.geminiApiKey,
+            section.content,
+            settings.translationPrompt || null,
+            settings.geminiModel || 'gemini-2.0-flash'
+          );
+        } else {
+          translated = await translateSectionViaAPI(
+            settings.apiKey,
+            section.content,
+            settings.translationPrompt || null,
+            settings.translationModel || 'claude-haiku-4-5-20251001'
+          );
+        }
         translatedSections.push(translated);
       } catch (error) {
         console.error(`[Service Worker] Failed to translate section ${i + 1}:`, error);
@@ -560,7 +581,7 @@ async function handleTranslateArticle(articleId) {
         translatedSections.push(section.content);
 
         // Re-throw if it's an auth error
-        if (error.message.includes('401')) {
+        if (error.message.includes('401') || error.message.includes('403')) {
           throw new Error('API authentication failed. Please check your API key in Settings.');
         }
       }
@@ -609,6 +630,110 @@ async function handleTranslateArticle(articleId) {
       errorString: String(error), // Issue #71: Serialize error properly
       errorType: error.constructor.name
     });
+    throw error;
+  }
+}
+
+/**
+ * Translate a Markdown section using Gemini API (Issue #66)
+ *
+ * Architecture Decision (Issue #66):
+ * - Support Gemini API as a free alternative to Anthropic
+ * - Endpoint: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+ * - No special CORS headers needed (uses query param auth)
+ * - Free tier available with rate limits
+ *
+ * @param {string} apiKey - Gemini API key (starts with "AIza")
+ * @param {string} sectionContent - Markdown section to translate
+ * @param {string} customPrompt - Optional custom prompt with {content} placeholder
+ * @param {string} model - Gemini model ID
+ * @returns {Promise<string>} Translated text
+ */
+async function translateSectionViaGeminiAPI(apiKey, sectionContent, customPrompt = null, model = 'gemini-2.0-flash') {
+  let prompt;
+
+  if (customPrompt && customPrompt.includes('{content}')) {
+    prompt = customPrompt.replace('{content}', sectionContent);
+  } else {
+    prompt = `以下のMarkdown形式のテキストを日本語に翻訳してください。
+
+要件:
+- Markdown記法はそのまま保持してください
+- 見出し、リスト、コードブロック、リンクなどのフォーマットを維持してください
+- 自然で読みやすい日本語に翻訳してください
+- 技術用語は適切に日本語化してください（例: "function" → "関数"）
+- URLやリンクは変更しないでください
+- 画像の参照パス（例: ./images/xxx.jpg）は変更しないでください
+- コードブロック内のコードは翻訳しないでください
+
+翻訳対象テキスト:
+${sectionContent}`;
+  }
+
+  const apiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  try {
+    const response = await fetch(apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 8192
+        }
+      })
+    });
+
+    if (!response.ok) {
+      let errorInfo = {};
+      try {
+        const errorBody = await response.json();
+        if (errorBody.error) {
+          errorInfo = {
+            type: errorBody.error.status,
+            message: errorBody.error.message
+          };
+        }
+      } catch (parseError) {
+        // JSON parse failed, continue without error details
+      }
+      console.error('[Service Worker] Gemini API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        ...errorInfo
+      });
+      const errorMessage = errorInfo.message
+        ? `Translation API error: ${response.status} - ${errorInfo.message}`
+        : `Translation API error: ${response.status} ${response.statusText}`;
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+
+    if (!data.candidates || !Array.isArray(data.candidates) || data.candidates.length === 0) {
+      console.error('[Service Worker] Invalid Gemini API response structure:', data);
+      throw new Error('Invalid Gemini API response: missing or empty candidates array');
+    }
+
+    const candidate = data.candidates[0];
+    if (!candidate.content || !candidate.content.parts || !Array.isArray(candidate.content.parts) || candidate.content.parts.length === 0) {
+      console.error('[Service Worker] Missing content in Gemini API response:', candidate);
+      throw new Error('Invalid Gemini API response: missing content parts');
+    }
+
+    if (typeof candidate.content.parts[0].text !== 'string') {
+      console.error('[Service Worker] Missing text in Gemini API response:', candidate.content.parts[0]);
+      throw new Error('Invalid Gemini API response: missing or invalid text field');
+    }
+
+    return candidate.content.parts[0].text;
+  } catch (error) {
+    console.error('[Service Worker] translateSectionViaGeminiAPI error:', error);
     throw error;
   }
 }
