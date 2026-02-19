@@ -53,7 +53,6 @@ let isShowingTranslation = false; // Issue #84: Track which view is active
 
 // Progressive translation state (Issue #109)
 let translationSectionsBuffer = []; // Buffer for translated sections as they arrive
-let translationTotalSections = 0;   // Total section count for current translation
 
 // Initialize
 init();
@@ -813,7 +812,6 @@ async function handleTranslateArticle() {
   try {
     // Reset progressive translation buffer (Issue #109)
     translationSectionsBuffer = [];
-    translationTotalSections = 0;
 
     // Show loading state (Issue #88)
     translateBtn.disabled = true;
@@ -935,7 +933,6 @@ function hideTranslationStatus() {
 function handleTranslationSectionComplete({ sectionIndex, totalSections, translatedContent, percentage }) {
   // Store translated section in buffer
   translationSectionsBuffer[sectionIndex] = translatedContent;
-  translationTotalSections = totalSections;
 
   // Build partial translation from all sections received so far (in order)
   const partialMarkdown = translationSectionsBuffer
