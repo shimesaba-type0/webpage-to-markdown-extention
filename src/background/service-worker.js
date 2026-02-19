@@ -548,35 +548,12 @@ async function handleTranslateArticle(articleId) {
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i];
 
-      // Send progress updates to popup (Issue #79 Item #2)
-      try {
-        await chrome.runtime.sendMessage({
-          action: 'translationProgress',
-          articleId,
-          progress: {
-            current: i + 1,
-            total: sections.length,
-            heading: section.heading,
-            percentage: Math.round(((i + 1) / sections.length) * 100)
-          }
-        });
-      } catch (error) {
-        // Expected: Popup may be closed, which is fine
-        // Log only unexpected errors for debugging
-        if (error.message && !error.message.includes('Receiving end does not exist')) {
-          console.warn('[Service Worker] Unexpected progress update error:', {
-            section: i + 1,
-            total: sections.length,
-            error: error.message
-          });
-        }
-      }
-
       console.log(`[Service Worker] Translating section ${i + 1}/${sections.length}...`);
 
+      let translated;
       try {
         // Call API directly from Service Worker (Issue #70)
-        const translated = await translateSectionViaAPI(
+        translated = await translateSectionViaAPI(
           settings.apiKey,
           section.content,
           settings.translationPrompt || null,
@@ -586,6 +563,7 @@ async function handleTranslateArticle(articleId) {
       } catch (error) {
         console.error(`[Service Worker] Failed to translate section ${i + 1}:`, error);
         // On error, use original text
+        translated = section.content;
         translatedSections.push(section.content);
 
         // Re-throw if it's an auth error
@@ -594,9 +572,27 @@ async function handleTranslateArticle(articleId) {
         }
       }
 
-      // Rate limiting: 500ms delay between sections
+      // Send translated section to SidePanel for progressive display (Issue #109)
+      try {
+        await chrome.runtime.sendMessage({
+          action: 'translationSectionComplete',
+          articleId,
+          sectionIndex: i,
+          totalSections: sections.length,
+          translatedContent: translated,
+          heading: section.heading,
+          percentage: Math.round(((i + 1) / sections.length) * 100)
+        });
+      } catch (msgError) {
+        // Expected: SidePanel may be closed or not yet open
+        if (msgError.message && !msgError.message.includes('Receiving end does not exist')) {
+          console.warn('[Service Worker] Unexpected progress update error:', msgError.message);
+        }
+      }
+
+      // Rate limiting: 100ms delay between sections (rate limiter prevents overuse)
       if (i < sections.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 

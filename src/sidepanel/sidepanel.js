@@ -51,6 +51,9 @@ let currentBlobUrls = []; // Store blob URLs for cleanup (Issue #25)
 let currentFontSize = 100; // Percentage (Issue #51)
 let isShowingTranslation = false; // Issue #84: Track which view is active
 
+// Progressive translation state (Issue #109)
+let translationSectionsBuffer = []; // Buffer for translated sections as they arrive
+
 // Initialize
 init();
 
@@ -97,16 +100,9 @@ async function init() {
       sendResponse({ success: true });
     }
 
-    // Issue #84: Receive translation after it completes
-    if (request.action === 'translationComplete') {
-      if (request.data && request.data.translatedMarkdown) {
-        currentTranslatedMarkdown = request.data.translatedMarkdown;
-        // Show translation toggle
-        translationToggle.classList.remove('hidden');
-        // Auto-switch to translated view
-        switchTranslationView(true);
-        console.log('[SidePanel] Translation received and displayed');
-      }
+    // Issue #109: Receive each translated section for progressive display
+    if (request.action === 'translationSectionComplete') {
+      handleTranslationSectionComplete(request);
       sendResponse({ success: true });
     }
   });
@@ -814,10 +810,13 @@ async function handleTranslateArticle() {
   }
 
   try {
+    // Reset progressive translation buffer (Issue #109)
+    translationSectionsBuffer = [];
+
     // Show loading state (Issue #88)
     translateBtn.disabled = true;
     translateBtn.title = 'Translating...';
-    showTranslationStatus('loading', 'Translating to Japanese... This may take a minute.');
+    showTranslationStatus('loading', 'Translating to Japanese... (0 sections done)');
 
     console.log('[SidePanel] Requesting translation for article:', currentArticleId);
 
@@ -833,14 +832,22 @@ async function handleTranslateArticle() {
 
     // Translation succeeded - update state
     if (response.translation && response.translation.translatedMarkdown) {
+      // Issue #109: Use the complete translation from the response as the authoritative final state
       currentTranslatedMarkdown = response.translation.translatedMarkdown;
+      translationSectionsBuffer = []; // Clear progressive buffer
 
       // Show success message (Issue #88)
       showTranslationStatus('success', '✓ Translation completed successfully!');
 
-      // Show translation toggle and switch to translated view
+      // Show translation toggle; switch to translated view if not already showing it
       translationToggle.classList.remove('hidden');
-      switchTranslationView(true);
+      if (!isShowingTranslation) {
+        switchTranslationView(true);
+      } else {
+        // Already showing translation progressively; re-render with final content
+        renderMarkdown(currentTranslatedMarkdown);
+        enableClickableLinks();
+      }
 
       // Hide translate button (translation is now done)
       translateBtn.classList.add('hidden');
@@ -908,6 +915,48 @@ function hideTranslationStatus() {
   translationStatus.classList.add('hidden');
   translationStatus.className = 'translation-status hidden';
   translationStatus.innerHTML = '';
+}
+
+/**
+ * Handle progressive translation section arrival (Issue #109)
+ *
+ * Called when service worker sends each completed section.
+ * Builds partial translation incrementally so user sees results immediately
+ * instead of waiting for all sections to finish.
+ *
+ * @param {Object} params
+ * @param {number} params.sectionIndex - 0-based index of the completed section
+ * @param {number} params.totalSections - Total number of sections
+ * @param {string} params.translatedContent - Translated text for this section
+ * @param {number} params.percentage - Completion percentage
+ */
+function handleTranslationSectionComplete({ sectionIndex, totalSections, translatedContent, percentage }) {
+  // Store translated section in buffer
+  translationSectionsBuffer[sectionIndex] = translatedContent;
+
+  // Build partial translation from all sections received so far (in order)
+  const partialMarkdown = translationSectionsBuffer
+    .filter(section => section !== undefined)
+    .join('\n\n');
+
+  currentTranslatedMarkdown = partialMarkdown;
+
+  // Show translation toggle and switch to translated view on first section
+  translationToggle.classList.remove('hidden');
+  if (!isShowingTranslation) {
+    // First section arrived: auto-switch to show translation in progress
+    switchTranslationView(true);
+  } else {
+    // Already in translation view: update content without switching
+    renderMarkdown(currentTranslatedMarkdown);
+    enableClickableLinks();
+  }
+
+  // Update progress indicator
+  const completedCount = sectionIndex + 1;
+  showTranslationStatus('loading', `Translating... ${completedCount}/${totalSections} sections (${percentage}%)`);
+
+  console.log(`[SidePanel] Progressive translation: section ${completedCount}/${totalSections} received`);
 }
 
 /**
