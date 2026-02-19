@@ -12,9 +12,15 @@ function splitMarkdownIntoSections(markdown) {
   const lines = markdown.split('\n');
   let currentSection = [];
   let currentHeading = null;
+  let inCodeBlock = false;
 
   for (const line of lines) {
-    const headingMatch = line.match(/^(#{1,2})\s+(.+)$/);
+    // Track fenced code block state (Issue #111)
+    if (line.startsWith('```') || line.startsWith('~~~')) {
+      inCodeBlock = !inCodeBlock;
+    }
+
+    const headingMatch = !inCodeBlock && line.match(/^(#{1,2})\s+(.+)$/);
     if (headingMatch) {
       if (currentSection.length > 0) {
         sections.push({ heading: currentHeading, content: currentSection.join('\n') });
@@ -103,14 +109,24 @@ describe('splitMarkdownIntoSections (Issue #109)', () => {
     expect(sections[0].content).toBe('');
   });
 
-  test('current implementation splits on headings inside code blocks (known limitation)', () => {
-    // Known limitation: splitMarkdownIntoSections does not track code block state.
-    // A line matching /^#{1,2}\s+/ inside a code block is treated as a real heading.
-    // This test documents the actual behavior; fixing this is tracked separately.
+  test('should NOT split on headings inside backtick code blocks (Issue #111 fix)', () => {
     const markdown = `# Section\n\n\`\`\`js\n## Not a heading\n\`\`\`\n\nMore text.`;
     const sections = splitMarkdownIntoSections(markdown);
-    // Currently splits at the ## inside the code block (known limitation)
+    expect(sections).toHaveLength(1);
+    expect(sections[0].content).toContain('## Not a heading');
+  });
+
+  test('should NOT split on headings inside tilde code blocks', () => {
+    const markdown = `# Section\n\n~~~python\n## Not a heading\n~~~\n\nMore text.`;
+    const sections = splitMarkdownIntoSections(markdown);
+    expect(sections).toHaveLength(1);
+  });
+
+  test('should resume splitting after code block closes', () => {
+    const markdown = `# First\n\n\`\`\`js\n## Inside block\n\`\`\`\n\n## Second\n\nContent.`;
+    const sections = splitMarkdownIntoSections(markdown);
     expect(sections).toHaveLength(2);
+    expect(sections[1].heading).toBe('## Second');
   });
 });
 

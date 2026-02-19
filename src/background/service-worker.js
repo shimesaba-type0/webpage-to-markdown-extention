@@ -186,19 +186,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Indicates async response
   }
 
-  // Issue #84: Forward translation completion to SidePanel
-  if (request.action === 'translationComplete') {
-    chrome.runtime.sendMessage(request)
-      .then(() => {
-        console.log('[Service Worker] Translation completion forwarded to SidePanel');
-        sendResponse({ success: true });
-      })
-      .catch(error => {
-        console.warn('[Service Worker] Could not forward translation to SidePanel:', error.message);
-        sendResponse({ success: false, error: error.message });
-      });
-    return true;
-  }
 });
 
 /**
@@ -329,10 +316,16 @@ function splitMarkdownIntoSections(markdown) {
   const lines = markdown.split('\n');
   let currentSection = [];
   let currentHeading = null;
+  let inCodeBlock = false;
 
   for (const line of lines) {
-    // Match H1 or H2 headings
-    const headingMatch = line.match(/^(#{1,2})\s+(.+)$/);
+    // Track fenced code block state (Issue #111)
+    if (line.startsWith('```') || line.startsWith('~~~')) {
+      inCodeBlock = !inCodeBlock;
+    }
+
+    // Match H1 or H2 headings only outside code blocks
+    const headingMatch = !inCodeBlock && line.match(/^(#{1,2})\s+(.+)$/);
 
     if (headingMatch) {
       // Save previous section

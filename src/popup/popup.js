@@ -592,22 +592,8 @@ async function translateArticle(articleId) {
 
     showStatus('✓ Translation completed!', 'success');
 
-    // Bug Fix (Issue #84): Send translated content to SidePanel
-    if (response.translation && response.translation.translatedMarkdown) {
-      try {
-        await chrome.runtime.sendMessage({
-          action: 'translationComplete',
-          data: {
-            articleId: articleId,
-            translatedMarkdown: response.translation.translatedMarkdown
-          }
-        });
-        console.log('[Popup] Translation sent to SidePanel');
-      } catch (error) {
-        // SidePanel may not be open, which is fine
-        console.warn('[Popup] Could not send translation to SidePanel:', error.message);
-      }
-    }
+    // Note: SidePanel receives translation progressively via translationSectionComplete
+    // messages sent by service-worker during translation (Issue #109 / #111).
 
     // Reload article list to show updated badge
     setTimeout(() => {
