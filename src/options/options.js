@@ -20,16 +20,8 @@ document.getElementById('show-gemini-key-btn').addEventListener('click', toggleG
 document.getElementById('clear-data-btn').addEventListener('click', clearAllData);
 document.getElementById('reset-prompt-btn').addEventListener('click', resetPrompt);
 document.getElementById('preview-prompt-btn').addEventListener('click', previewPrompt);
-document.getElementById('translation-provider').addEventListener('change', updateProviderUI);
-
 // 初期化
 loadSettings();
-
-function updateProviderUI() {
-  const provider = document.getElementById('translation-provider').value;
-  document.getElementById('anthropic-settings').style.display = provider === 'anthropic' ? '' : 'none';
-  document.getElementById('gemini-settings').style.display = provider === 'gemini' ? '' : 'none';
-}
 
 async function loadSettings() {
   const settings = await chrome.storage.sync.get({
@@ -57,8 +49,6 @@ async function loadSettings() {
   document.getElementById('include-metadata').checked = settings.includeMetadata;
   document.getElementById('auto-translate').checked = settings.autoTranslate;
   document.getElementById('download-images').checked = settings.downloadImages;
-
-  updateProviderUI();
 }
 
 async function saveSettings() {
