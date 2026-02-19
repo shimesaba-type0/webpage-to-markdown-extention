@@ -16,17 +16,28 @@ const DEFAULT_TRANSLATION_PROMPT = `以下のMarkdown形式のテキストを日
 // 設定の保存と読み込み
 document.getElementById('save-btn').addEventListener('click', saveSettings);
 document.getElementById('show-key-btn').addEventListener('click', toggleKeyVisibility);
+document.getElementById('show-gemini-key-btn').addEventListener('click', toggleGeminiKeyVisibility);
 document.getElementById('clear-data-btn').addEventListener('click', clearAllData);
 document.getElementById('reset-prompt-btn').addEventListener('click', resetPrompt);
 document.getElementById('preview-prompt-btn').addEventListener('click', previewPrompt);
+document.getElementById('translation-provider').addEventListener('change', updateProviderUI);
 
 // 初期化
 loadSettings();
 
+function updateProviderUI() {
+  const provider = document.getElementById('translation-provider').value;
+  document.getElementById('anthropic-settings').style.display = provider === 'anthropic' ? '' : 'none';
+  document.getElementById('gemini-settings').style.display = provider === 'gemini' ? '' : 'none';
+}
+
 async function loadSettings() {
   const settings = await chrome.storage.sync.get({
     enableTranslation: false,
+    translationProvider: 'anthropic',
     apiKey: '',
+    geminiApiKey: '',
+    geminiModel: 'gemini-2.0-flash',
     preserveOriginal: true,
     translationPrompt: DEFAULT_TRANSLATION_PROMPT,
     includeMetadata: true,
@@ -36,19 +47,27 @@ async function loadSettings() {
   });
 
   document.getElementById('enable-translation').checked = settings.enableTranslation;
+  document.getElementById('translation-provider').value = settings.translationProvider;
   document.getElementById('api-key').value = settings.apiKey;
   document.getElementById('translation-model').value = settings.translationModel;
+  document.getElementById('gemini-api-key').value = settings.geminiApiKey;
+  document.getElementById('gemini-model').value = settings.geminiModel;
   document.getElementById('preserve-original').checked = settings.preserveOriginal;
   document.getElementById('translation-prompt').value = settings.translationPrompt;
   document.getElementById('include-metadata').checked = settings.includeMetadata;
   document.getElementById('auto-translate').checked = settings.autoTranslate;
   document.getElementById('download-images').checked = settings.downloadImages;
+
+  updateProviderUI();
 }
 
 async function saveSettings() {
   const settings = {
     enableTranslation: document.getElementById('enable-translation').checked,
+    translationProvider: document.getElementById('translation-provider').value,
     apiKey: document.getElementById('api-key').value,
+    geminiApiKey: document.getElementById('gemini-api-key').value,
+    geminiModel: document.getElementById('gemini-model').value,
     preserveOriginal: document.getElementById('preserve-original').checked,
     translationPrompt: document.getElementById('translation-prompt').value,
     includeMetadata: document.getElementById('include-metadata').checked,
@@ -71,6 +90,19 @@ async function saveSettings() {
 function toggleKeyVisibility() {
   const input = document.getElementById('api-key');
   const btn = document.getElementById('show-key-btn');
+
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = 'Hide';
+  } else {
+    input.type = 'password';
+    btn.textContent = 'Show';
+  }
+}
+
+function toggleGeminiKeyVisibility() {
+  const input = document.getElementById('gemini-api-key');
+  const btn = document.getElementById('show-gemini-key-btn');
 
   if (input.type === 'password') {
     input.type = 'text';
