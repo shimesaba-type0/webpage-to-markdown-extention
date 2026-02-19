@@ -930,7 +930,13 @@ function hideTranslationStatus() {
  * @param {string} params.translatedContent - Translated text for this section
  * @param {number} params.percentage - Completion percentage
  */
-function handleTranslationSectionComplete({ sectionIndex, totalSections, translatedContent, percentage }) {
+function handleTranslationSectionComplete({ articleId, sectionIndex, totalSections, translatedContent, percentage }) {
+  // Only update if this translation is for the currently displayed article (Issue #111)
+  if (articleId !== currentArticleId) {
+    console.log('[SidePanel] Ignoring translationSectionComplete for different article:', articleId, '(current:', currentArticleId, ')');
+    return;
+  }
+
   // Store translated section in buffer
   translationSectionsBuffer[sectionIndex] = translatedContent;
 
