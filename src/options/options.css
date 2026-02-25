@@ -197,3 +197,96 @@ button:not(.primary):not(.danger):hover {
   background-color: #e8f0fe;
   color: #1967d2;
 }
+
+/* Copy Template Settings */
+.template-list {
+  margin-bottom: 12px;
+}
+
+.template-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #fafafa;
+}
+
+.template-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.template-name {
+  font-weight: 500;
+  font-size: 13px;
+  display: block;
+  color: #202124;
+}
+
+.template-prompt-preview {
+  font-size: 11px;
+  color: #5f6368;
+  font-style: italic;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.template-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  background-color: #f1f3f4;
+  color: #5f6368;
+}
+
+.btn:hover {
+  background-color: #e8eaed;
+}
+
+.btn-primary {
+  background-color: #1a73e8;
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #1557b0;
+}
+
+.btn-danger {
+  background-color: #d93025;
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: #b31412;
+}
+
+.btn-small {
+  padding: 2px 8px;
+  font-size: 12px;
+  min-height: 24px;
+}
+
+.template-editor {
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 8px;
+}

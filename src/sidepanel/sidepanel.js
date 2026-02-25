@@ -54,6 +54,14 @@ let isShowingTranslation = false; // Issue #84: Track which view is active
 // Progressive translation state (Issue #109)
 let translationSectionsBuffer = []; // Buffer for translated sections as they arrive
 
+// Template copy state (Issue #117)
+let selectedTemplateId = null;
+const DEFAULT_COPY_TEMPLATES = [
+  { id: 'tmpl-summarize', name: '要約', prompt: '以下の記事を日本語で3行に要約してください：' },
+  { id: 'tmpl-keypoints', name: '重要点', prompt: '以下の記事の重要なポイントを箇条書きで抽出してください：' },
+  { id: 'tmpl-translate', name: '翻訳依頼', prompt: '以下の記事を日本語に翻訳してください。Markdown記法は維持してください：' }
+];
+
 // Initialize
 init();
 
@@ -366,6 +374,9 @@ function displayMarkdown(data) {
     // Show content
     showContentView();
 
+    // Load and render template selector (Issue #117)
+    loadAndRenderTemplates();
+
     console.log('[SidePanel] Content displayed successfully');
   } catch (error) {
     console.error('[SidePanel] Display error:', error);
@@ -574,8 +585,20 @@ async function copyMarkdown() {
     const markdownToCopy = isShowingTranslation && currentTranslatedMarkdown
       ? currentTranslatedMarkdown
       : currentMarkdown;
-    await navigator.clipboard.writeText(markdownToCopy);
-    showNotification('Copied to clipboard!');
+
+    let textToCopy = markdownToCopy;
+
+    // Prepend template prompt if one is selected (Issue #117)
+    if (selectedTemplateId) {
+      const { copyTemplates } = await chrome.storage.sync.get({ copyTemplates: DEFAULT_COPY_TEMPLATES });
+      const tmpl = (copyTemplates || DEFAULT_COPY_TEMPLATES).find(t => t.id === selectedTemplateId);
+      if (tmpl) {
+        textToCopy = `${tmpl.prompt}\n\n---\n\n${markdownToCopy}`;
+      }
+    }
+
+    await navigator.clipboard.writeText(textToCopy);
+    showNotification(selectedTemplateId ? 'Copied with template!' : 'Copied to clipboard!');
   } catch (error) {
     console.error('[SidePanel] Copy error:', error);
     showNotification('Failed to copy', 'error');
@@ -1223,5 +1246,72 @@ function enableClickableLinks() {
 
   console.log('[SidePanel] Clickable links enabled with browser standard modifiers');
 }
+
+/**
+ * Load templates from storage and render selector UI (Issue #117)
+ */
+async function loadAndRenderTemplates() {
+  try {
+    const { copyTemplates } = await chrome.storage.sync.get({ copyTemplates: DEFAULT_COPY_TEMPLATES });
+    const templates = copyTemplates || DEFAULT_COPY_TEMPLATES;
+    const selector = document.getElementById('template-selector');
+    const buttonsContainer = document.getElementById('template-buttons');
+
+    if (!templates || templates.length === 0) {
+      selector.style.display = 'none';
+      return;
+    }
+
+    buttonsContainer.innerHTML = '';
+    templates.forEach(tmpl => {
+      const btn = document.createElement('button');
+      btn.className = 'template-btn';
+      btn.dataset.id = tmpl.id;
+      btn.textContent = tmpl.name;
+      btn.title = tmpl.prompt;
+      btn.addEventListener('click', () => toggleTemplate(tmpl.id));
+      buttonsContainer.appendChild(btn);
+    });
+
+    selector.style.display = 'block';
+
+    // Restore selection state
+    if (selectedTemplateId) {
+      const btn = buttonsContainer.querySelector(`[data-id="${selectedTemplateId}"]`);
+      if (btn) {
+        btn.classList.add('selected');
+      } else {
+        selectedTemplateId = null; // Template was removed
+      }
+    }
+  } catch (error) {
+    console.warn('[SidePanel] Failed to load templates:', error);
+  }
+}
+
+/**
+ * Toggle template selection (Issue #117)
+ */
+function toggleTemplate(id) {
+  const buttons = document.querySelectorAll('.template-btn');
+  if (selectedTemplateId === id) {
+    // Deselect
+    selectedTemplateId = null;
+    buttons.forEach(btn => btn.classList.remove('selected'));
+  } else {
+    // Select
+    selectedTemplateId = id;
+    buttons.forEach(btn => {
+      btn.classList.toggle('selected', btn.dataset.id === id);
+    });
+  }
+}
+
+// Watch for template changes from options page (Issue #117)
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'sync' && changes.copyTemplates) {
+    loadAndRenderTemplates();
+  }
+});
 
 console.log('[SidePanel] Script loaded');
