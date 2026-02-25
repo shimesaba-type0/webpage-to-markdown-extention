@@ -83,10 +83,10 @@ function toggleKeyVisibility() {
 
   if (input.type === 'password') {
     input.type = 'text';
-    btn.textContent = 'Hide';
+    btn.innerHTML = 'Hide <span class="lang-ja">/ 非表示</span>';
   } else {
     input.type = 'password';
-    btn.textContent = 'Show';
+    btn.innerHTML = 'Show <span class="lang-ja">/ 表示</span>';
   }
 }
 
@@ -96,10 +96,10 @@ function toggleGeminiKeyVisibility() {
 
   if (input.type === 'password') {
     input.type = 'text';
-    btn.textContent = 'Hide';
+    btn.innerHTML = 'Hide <span class="lang-ja">/ 非表示</span>';
   } else {
     input.type = 'password';
-    btn.textContent = 'Show';
+    btn.innerHTML = 'Show <span class="lang-ja">/ 表示</span>';
   }
 }
 
