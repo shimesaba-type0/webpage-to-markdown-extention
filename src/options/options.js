@@ -1,3 +1,10 @@
+// デフォルトコピーテンプレート
+const DEFAULT_COPY_TEMPLATES = [
+  { id: 'tmpl-summarize', name: '要約 / Summarize', prompt: '以下の記事を日本語で3行に要約してください：' },
+  { id: 'tmpl-keypoints', name: '重要点 / Key Points', prompt: '以下の記事の重要なポイントを箇条書きで抽出してください：' },
+  { id: 'tmpl-translate', name: '翻訳依頼 / Translate', prompt: '以下の記事を日本語に翻訳してください。Markdown記法は維持してください：' }
+];
+
 // デフォルト翻訳プロンプト
 const DEFAULT_TRANSLATION_PROMPT = `以下のMarkdown形式のテキストを日本語に翻訳してください。
 
@@ -20,6 +27,14 @@ document.getElementById('show-gemini-key-btn').addEventListener('click', toggleG
 document.getElementById('clear-data-btn').addEventListener('click', clearAllData);
 document.getElementById('reset-prompt-btn').addEventListener('click', resetPrompt);
 document.getElementById('preview-prompt-btn').addEventListener('click', previewPrompt);
+// テンプレート管理の初期化
+chrome.storage.sync.get({ copyTemplates: DEFAULT_COPY_TEMPLATES }, (data) => {
+  renderTemplateList(data.copyTemplates);
+});
+document.getElementById('add-template-btn').addEventListener('click', () => showTemplateEditor());
+document.getElementById('save-template-btn').addEventListener('click', saveTemplate);
+document.getElementById('cancel-template-btn').addEventListener('click', hideTemplateEditor);
+
 // 初期化
 loadSettings();
 
@@ -121,6 +136,113 @@ function previewPrompt() {
   const previewText = prompt.replace('{content}', sampleContent);
 
   alert('Preview of prompt that will be sent to API:\\n\\n' + previewText);
+}
+
+// --- Copy Template Management ---
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function showStatus(message, type = 'success') {
+  const statusEl = document.getElementById('status');
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.className = type === 'error' ? 'error' : type === 'info' ? 'info' : 'success';
+  setTimeout(() => { statusEl.textContent = ''; }, 3000);
+}
+
+function renderTemplateList(templates) {
+  const list = document.getElementById('template-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (!templates || templates.length === 0) {
+    list.innerHTML = '<p class="help-text">No templates yet. / テンプレートがありません。</p>';
+    return;
+  }
+
+  templates.forEach(tmpl => {
+    const item = document.createElement('div');
+    item.className = 'template-item';
+    const preview = tmpl.prompt.length > 60 ? tmpl.prompt.substring(0, 60) + '...' : tmpl.prompt;
+    item.innerHTML = `
+      <div class="template-info">
+        <span class="template-name">${escapeHtml(tmpl.name)}</span>
+        <span class="template-prompt-preview">${escapeHtml(preview)}</span>
+      </div>
+      <div class="template-actions">
+        <button class="btn btn-small edit-btn" data-id="${tmpl.id}">Edit / 編集</button>
+        <button class="btn btn-small btn-danger delete-btn" data-id="${tmpl.id}">Delete / 削除</button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+
+  list.querySelectorAll('.edit-btn').forEach(btn =>
+    btn.addEventListener('click', () => editTemplate(btn.dataset.id))
+  );
+  list.querySelectorAll('.delete-btn').forEach(btn =>
+    btn.addEventListener('click', () => deleteTemplate(btn.dataset.id))
+  );
+}
+
+function showTemplateEditor(id = null, name = '', prompt = '') {
+  document.getElementById('editing-template-id').value = id || '';
+  document.getElementById('template-name-input').value = name;
+  document.getElementById('template-prompt-input').value = prompt;
+  document.getElementById('template-editor').style.display = 'block';
+  document.getElementById('add-template-btn').style.display = 'none';
+}
+
+function hideTemplateEditor() {
+  document.getElementById('template-editor').style.display = 'none';
+  document.getElementById('add-template-btn').style.display = 'inline-flex';
+}
+
+function editTemplate(id) {
+  chrome.storage.sync.get({ copyTemplates: DEFAULT_COPY_TEMPLATES }, (data) => {
+    const tmpl = data.copyTemplates.find(t => t.id === id);
+    if (tmpl) showTemplateEditor(tmpl.id, tmpl.name, tmpl.prompt);
+  });
+}
+
+function deleteTemplate(id) {
+  if (!confirm('Delete this template? / このテンプレートを削除しますか？')) return;
+  chrome.storage.sync.get({ copyTemplates: DEFAULT_COPY_TEMPLATES }, (data) => {
+    const updated = data.copyTemplates.filter(t => t.id !== id);
+    chrome.storage.sync.set({ copyTemplates: updated }, () => {
+      renderTemplateList(updated);
+      showStatus('Template deleted. / テンプレートを削除しました。');
+    });
+  });
+}
+
+function saveTemplate() {
+  const id = document.getElementById('editing-template-id').value;
+  const name = document.getElementById('template-name-input').value.trim();
+  const prompt = document.getElementById('template-prompt-input').value.trim();
+
+  if (!name || !prompt) {
+    showStatus('Please fill in all fields. / すべての項目を入力してください。', 'error');
+    return;
+  }
+
+  chrome.storage.sync.get({ copyTemplates: DEFAULT_COPY_TEMPLATES }, (data) => {
+    let templates = data.copyTemplates;
+    if (id) {
+      templates = templates.map(t => t.id === id ? { ...t, name, prompt } : t);
+    } else {
+      templates = [...templates, { id: 'tmpl-' + Date.now(), name, prompt }];
+    }
+    chrome.storage.sync.set({ copyTemplates: templates }, () => {
+      renderTemplateList(templates);
+      hideTemplateEditor();
+      showStatus('Template saved. / テンプレートを保存しました。');
+    });
+  });
 }
 
 async function clearAllData() {
