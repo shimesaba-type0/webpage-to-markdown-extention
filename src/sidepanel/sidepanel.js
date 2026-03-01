@@ -1290,20 +1290,25 @@ async function loadAndRenderTemplates() {
 }
 
 /**
- * Toggle template selection (Issue #117)
+ * Toggle template selection and immediately copy with template (Issue #122)
+ *
+ * Change from Issue #117: Selecting a template now immediately copies content
+ * with that template prepended. Clicking the same template again deselects
+ * without copying.
  */
-function toggleTemplate(id) {
+async function toggleTemplate(id) {
   const buttons = document.querySelectorAll('.template-btn');
   if (selectedTemplateId === id) {
-    // Deselect
+    // Deselect (no copy)
     selectedTemplateId = null;
     buttons.forEach(btn => btn.classList.remove('selected'));
   } else {
-    // Select
+    // Select and immediately copy
     selectedTemplateId = id;
     buttons.forEach(btn => {
       btn.classList.toggle('selected', btn.dataset.id === id);
     });
+    await copyMarkdown();
   }
 }
 
