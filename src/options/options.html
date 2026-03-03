@@ -55,6 +55,17 @@
       </div>
 
       <div class="form-group">
+        <label for="max-output-tokens">Max Output Tokens: <span class="lang-ja">/ 最大出力トークン数:</span></label>
+        <input type="number" id="max-output-tokens" min="256" max="16384" step="256" value="4096">
+        <p class="help-text">
+          Limit the maximum tokens per translation section to control cost (Issue #130).<br>
+          Anthropic default: 4096 / Gemini default: 8192. Lower values reduce cost but may cut off long sections.<br>
+          <span class="lang-ja">翻訳1セクションあたりの最大出力トークン数（コスト管理用）。<br>
+          Anthropicデフォルト: 4096 / Geminiデフォルト: 8192。低い値にするとコストが下がりますが、長いセクションが途中で切れる場合があります。</span>
+        </p>
+      </div>
+
+      <div class="form-group">
         <label for="gemini-api-key">Gemini API Key: <span class="lang-ja">/ Gemini APIキー:</span></label>
         <input type="password" id="gemini-api-key" placeholder="AIza...">
         <button id="show-gemini-key-btn">Show <span class="lang-ja">/ 表示</span></button>
@@ -182,6 +193,42 @@
           Please respect copyright and terms of service of the original content.<br>
           <span class="lang-ja"><strong>注意:</strong> ダウンロードした画像は個人使用のみです。著作権およびオリジナルコンテンツの利用規約を遵守してください。</span>
         </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Translation Usage Statistics <span class="lang-ja">/ 翻訳使用統計</span></h2>
+      <p class="help-text">
+        Cumulative token usage and estimated cost across all translation sessions (Issue #129).<br>
+        <span class="lang-ja">全翻訳セッションの累積トークン使用量と推定コストです。</span>
+      </p>
+      <div class="form-group usage-stats">
+        <table class="usage-table">
+          <tr>
+            <td>Input Tokens <span class="lang-ja">/ 入力トークン数</span></td>
+            <td><span id="stat-input-tokens">-</span></td>
+          </tr>
+          <tr>
+            <td>Output Tokens <span class="lang-ja">/ 出力トークン数</span></td>
+            <td><span id="stat-output-tokens">-</span></td>
+          </tr>
+          <tr>
+            <td>Estimated Cost (USD) <span class="lang-ja">/ 推定コスト（米ドル）</span></td>
+            <td><strong><span id="stat-cost">-</span></strong></td>
+          </tr>
+          <tr>
+            <td>Last Updated <span class="lang-ja">/ 最終更新</span></td>
+            <td><span id="stat-last-updated">-</span></td>
+          </tr>
+        </table>
+        <p class="help-text">
+          * Gemini free-tier models (Flash, Flash 8B) have $0 estimated cost.<br>
+          * Gemini 1.5 Pro and Anthropic models are billed per token.<br>
+          <span class="lang-ja">* GeminiのFlash系モデルは無料枠の場合コスト$0。Gemini 1.5 ProおよびAnthropicモデルはトークン課金です。</span>
+        </p>
+        <button id="reset-usage-btn" class="btn">
+          Reset Statistics / 使用統計をリセット
+        </button>
       </div>
     </section>
 

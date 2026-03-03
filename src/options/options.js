@@ -27,6 +27,7 @@ document.getElementById('show-gemini-key-btn').addEventListener('click', toggleG
 document.getElementById('clear-data-btn').addEventListener('click', clearAllData);
 document.getElementById('reset-prompt-btn').addEventListener('click', resetPrompt);
 document.getElementById('preview-prompt-btn').addEventListener('click', previewPrompt);
+document.getElementById('reset-usage-btn').addEventListener('click', resetUsageStats);
 // テンプレート管理の初期化
 chrome.storage.sync.get({ copyTemplates: DEFAULT_COPY_TEMPLATES }, (data) => {
   renderTemplateList(data.copyTemplates);
@@ -37,6 +38,7 @@ document.getElementById('cancel-template-btn').addEventListener('click', hideTem
 
 // 初期化
 loadSettings();
+loadUsageStats();
 
 async function loadSettings() {
   const settings = await chrome.storage.sync.get({
@@ -50,7 +52,8 @@ async function loadSettings() {
     includeMetadata: true,
     autoTranslate: false,
     downloadImages: false,  // Issue #38: Default to disabled for user consent
-    translationModel: 'claude-haiku-4-5-20251001'  // Issue #99: Default model
+    translationModel: 'claude-haiku-4-5-20251001',  // Issue #99: Default model
+    maxOutputTokens: 4096  // Issue #130: Default max output tokens
   });
 
   document.getElementById('enable-translation').checked = settings.enableTranslation;
@@ -64,6 +67,7 @@ async function loadSettings() {
   document.getElementById('include-metadata').checked = settings.includeMetadata;
   document.getElementById('auto-translate').checked = settings.autoTranslate;
   document.getElementById('download-images').checked = settings.downloadImages;
+  document.getElementById('max-output-tokens').value = settings.maxOutputTokens;
 }
 
 async function saveSettings() {
@@ -78,7 +82,8 @@ async function saveSettings() {
     includeMetadata: document.getElementById('include-metadata').checked,
     autoTranslate: document.getElementById('auto-translate').checked,
     downloadImages: document.getElementById('download-images').checked,  // Issue #38
-    translationModel: document.getElementById('translation-model').value  // Issue #99
+    translationModel: document.getElementById('translation-model').value,  // Issue #99
+    maxOutputTokens: parseInt(document.getElementById('max-output-tokens').value, 10) || 4096  // Issue #130
   };
 
   await chrome.storage.sync.set(settings);
@@ -243,6 +248,41 @@ function saveTemplate() {
       showStatus('Template saved. / テンプレートを保存しました。');
     });
   });
+}
+
+/**
+ * Load and display cumulative token usage statistics (Issue #129)
+ */
+async function loadUsageStats() {
+  const { tokenUsage = {} } = await chrome.storage.local.get('tokenUsage');
+
+  const inputEl = document.getElementById('stat-input-tokens');
+  const outputEl = document.getElementById('stat-output-tokens');
+  const costEl = document.getElementById('stat-cost');
+  const updatedEl = document.getElementById('stat-last-updated');
+
+  if (!tokenUsage.lastUpdated) {
+    inputEl.textContent = '0';
+    outputEl.textContent = '0';
+    costEl.textContent = '$0.000000';
+    updatedEl.textContent = 'No data yet / データなし';
+    return;
+  }
+
+  inputEl.textContent = (tokenUsage.totalInputTokens || 0).toLocaleString();
+  outputEl.textContent = (tokenUsage.totalOutputTokens || 0).toLocaleString();
+  costEl.textContent = `$${(tokenUsage.estimatedCostUSD || 0).toFixed(6)}`;
+  updatedEl.textContent = new Date(tokenUsage.lastUpdated).toLocaleString();
+}
+
+/**
+ * Reset cumulative usage statistics (Issue #129)
+ */
+async function resetUsageStats() {
+  if (!confirm('Reset all translation usage statistics? / 翻訳使用統計をリセットしますか？')) return;
+  await chrome.storage.local.remove('tokenUsage');
+  await loadUsageStats();
+  showStatus('Usage statistics reset. / 使用統計をリセットしました。');
 }
 
 async function clearAllData() {
