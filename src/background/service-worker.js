@@ -94,6 +94,50 @@ class ApiRateLimiter {
 // Global rate limiter instance (Issue #81 Item #5)
 const apiRateLimiter = new ApiRateLimiter();
 
+/**
+ * Track in-progress translations to prevent duplicate execution (Issue #131)
+ * Key: articleId (number), Value: true while translating
+ */
+const translatingArticleIds = new Set();
+
+/**
+ * Pricing table per million tokens (USD) by model (Issue #129)
+ * Gemini free-tier models have $0 cost.
+ */
+const MODEL_PRICING = {
+  'claude-haiku-4-5-20251001':  { input: 0.80,  output: 4.00  },
+  'claude-sonnet-4-5-20250929': { input: 3.00,  output: 15.00 },
+  'claude-opus-4-6':            { input: 15.00, output: 75.00 },
+  'gemini-2.0-flash':    { input: 0, output: 0 },
+  'gemini-1.5-flash':    { input: 0, output: 0 },
+  'gemini-1.5-flash-8b': { input: 0, output: 0 },
+  'gemini-1.5-pro':      { input: 3.50, output: 10.50 }
+};
+
+/**
+ * Accumulate token usage to chrome.storage.local (Issue #129)
+ * @param {number} inputTokens
+ * @param {number} outputTokens
+ * @param {string} model - Model ID used for translation
+ */
+async function recordTokenUsage(inputTokens, outputTokens, model) {
+  try {
+    const { tokenUsage = {} } = await chrome.storage.local.get('tokenUsage');
+    const pricing = MODEL_PRICING[model] || { input: 0, output: 0 };
+    const sessionCostUSD = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
+
+    const updated = {
+      totalInputTokens:  (tokenUsage.totalInputTokens  || 0) + inputTokens,
+      totalOutputTokens: (tokenUsage.totalOutputTokens || 0) + outputTokens,
+      estimatedCostUSD:  ((tokenUsage.estimatedCostUSD || 0) + sessionCostUSD),
+      lastUpdated: new Date().toISOString()
+    };
+    await chrome.storage.local.set({ tokenUsage: updated });
+  } catch (error) {
+    console.warn('[Service Worker] Failed to record token usage:', error);
+  }
+}
+
 console.log('[Service Worker] Starting...');
 
 // Extension installation/update handler
@@ -379,7 +423,7 @@ function splitMarkdownIntoSections(markdown) {
  * @param {string} customPrompt - Optional custom prompt
  * @returns {Promise<string>} Translated text
  */
-async function translateSectionViaAPI(apiKey, sectionContent, customPrompt = null, model = 'claude-haiku-4-5-20251001') {
+async function translateSectionViaAPI(apiKey, sectionContent, customPrompt = null, model = 'claude-haiku-4-5-20251001', maxOutputTokens = 4096) {
   let prompt;
 
   // Use custom prompt if provided
@@ -415,7 +459,7 @@ ${sectionContent}`;
       },
       body: JSON.stringify({
         model: model,
-        max_tokens: 4096,
+        max_tokens: maxOutputTokens,
         messages: [{
           role: 'user',
           content: prompt
@@ -460,6 +504,15 @@ ${sectionContent}`;
       throw new Error('Invalid Anthropic API response: missing or invalid text field');
     }
 
+    // Record token usage for cost tracking (Issue #129)
+    if (data.usage) {
+      await recordTokenUsage(
+        data.usage.input_tokens || 0,
+        data.usage.output_tokens || 0,
+        model
+      );
+    }
+
     return data.content[0].text;
   } catch (error) {
     console.error('[Service Worker] translateSectionViaAPI error:', error);
@@ -487,9 +540,16 @@ async function handleTranslateArticle(articleId) {
       throw new Error(`Invalid article ID: ${articleId} (type: ${typeof articleId})`);
     }
 
+    // Prevent duplicate execution for same article (Issue #131)
+    if (translatingArticleIds.has(articleId)) {
+      throw new Error('この記事は現在翻訳中です。しばらくお待ちください。 / Translation is already in progress for this article.');
+    }
+    translatingArticleIds.add(articleId);
+
     // Check rate limit (Issue #81 Item #5)
     const rateLimitCheck = apiRateLimiter.checkLimit();
     if (!rateLimitCheck.allowed) {
+      translatingArticleIds.delete(articleId);
       console.warn('[Service Worker] Translation blocked by rate limiter:', rateLimitCheck.reason);
       throw new Error(rateLimitCheck.reason);
     }
@@ -504,7 +564,8 @@ async function handleTranslateArticle(articleId) {
       geminiModel: 'gemini-2.0-flash',
       translationPrompt: '',
       preserveOriginal: true,
-      translationModel: 'claude-haiku-4-5-20251001'
+      translationModel: 'claude-haiku-4-5-20251001',
+      maxOutputTokens: 4096  // Issue #130: Configurable max output tokens
     });
 
     if (!settings.enableTranslation) {
@@ -563,14 +624,16 @@ async function handleTranslateArticle(articleId) {
             settings.geminiApiKey,
             section.content,
             settings.translationPrompt || null,
-            settings.geminiModel || 'gemini-2.0-flash'
+            settings.geminiModel || 'gemini-2.0-flash',
+            settings.maxOutputTokens || 8192  // Issue #130: Use configured value
           );
         } else {
           translated = await translateSectionViaAPI(
             settings.apiKey,
             section.content,
             settings.translationPrompt || null,
-            settings.translationModel || 'claude-haiku-4-5-20251001'
+            settings.translationModel || 'claude-haiku-4-5-20251001',
+            settings.maxOutputTokens || 4096  // Issue #130: Use configured value
           );
         }
         translatedSections.push(translated);
@@ -631,6 +694,9 @@ async function handleTranslateArticle(articleId) {
       errorType: error.constructor.name
     });
     throw error;
+  } finally {
+    // Always release the lock regardless of success or failure (Issue #131)
+    translatingArticleIds.delete(articleId);
   }
 }
 
@@ -649,7 +715,7 @@ async function handleTranslateArticle(articleId) {
  * @param {string} model - Gemini model ID
  * @returns {Promise<string>} Translated text
  */
-async function translateSectionViaGeminiAPI(apiKey, sectionContent, customPrompt = null, model = 'gemini-2.0-flash') {
+async function translateSectionViaGeminiAPI(apiKey, sectionContent, customPrompt = null, model = 'gemini-2.0-flash', maxOutputTokens = 8192) {
   let prompt;
 
   if (customPrompt && customPrompt.includes('{content}')) {
@@ -684,7 +750,7 @@ ${sectionContent}`;
         }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 8192
+          maxOutputTokens: maxOutputTokens
         }
       })
     });
@@ -729,6 +795,15 @@ ${sectionContent}`;
     if (typeof candidate.content.parts[0].text !== 'string') {
       console.error('[Service Worker] Missing text in Gemini API response:', candidate.content.parts[0]);
       throw new Error('Invalid Gemini API response: missing or invalid text field');
+    }
+
+    // Record token usage for cost tracking (Issue #129)
+    if (data.usageMetadata) {
+      await recordTokenUsage(
+        data.usageMetadata.promptTokenCount || 0,
+        data.usageMetadata.candidatesTokenCount || 0,
+        model
+      );
     }
 
     return candidate.content.parts[0].text;
