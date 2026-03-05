@@ -8,8 +8,18 @@
 class FileExporter {
   /**
    * Export a single article as ZIP
+   *
+   * Bug Fix (Issue #138):
+   * - Accept options to conditionally include metadata.json
+   * - includeMetadata=false skips metadata.json output
+   *
+   * @param {Object} article - Article data
+   * @param {Array} images - Array of image objects
+   * @param {Object} options - Export options
+   * @param {boolean} [options.includeMetadata=true] - Whether to include metadata.json
    */
-  async exportArticle(article, images = []) {
+  async exportArticle(article, images = [], options = {}) {
+    const { includeMetadata = true } = options;
     const zip = new JSZip();
 
     // Sanitize filename
@@ -28,17 +38,19 @@ class FileExporter {
       }
     }
 
-    // Add metadata JSON
-    const metadata = {
-      title: article.metadata?.title || article.title,
-      author: article.metadata?.author || article.author,
-      url: article.metadata?.url || article.url,
-      siteName: article.metadata?.siteName || article.siteName,
-      timestamp: article.metadata?.timestamp || article.timestamp,
-      createdAt: article.createdAt,
-      hasTranslation: article.hasTranslation || false
-    };
-    zip.file('metadata.json', JSON.stringify(metadata, null, 2));
+    // Add metadata JSON (Issue #138: only when includeMetadata is enabled)
+    if (includeMetadata) {
+      const metadata = {
+        title: article.metadata?.title || article.title,
+        author: article.metadata?.author || article.author,
+        url: article.metadata?.url || article.url,
+        siteName: article.metadata?.siteName || article.siteName,
+        timestamp: article.metadata?.timestamp || article.timestamp,
+        createdAt: article.createdAt,
+        hasTranslation: article.hasTranslation || false
+      };
+      zip.file('metadata.json', JSON.stringify(metadata, null, 2));
+    }
 
     // Add translation if exists
     if (article.hasTranslation && article.translatedMarkdown) {
@@ -56,8 +68,16 @@ class FileExporter {
 
   /**
    * Export multiple articles as a single ZIP
+   *
+   * Bug Fix (Issue #138):
+   * - Accept options to conditionally include metadata.json per article
+   *
+   * @param {Array} articlesData - Array of {article, images} objects
+   * @param {Object} options - Export options
+   * @param {boolean} [options.includeMetadata=true] - Whether to include metadata.json
    */
-  async exportMultipleArticles(articlesData) {
+  async exportMultipleArticles(articlesData, options = {}) {
+    const { includeMetadata = true } = options;
     const zip = new JSZip();
 
     for (let i = 0; i < articlesData.length; i++) {
@@ -78,17 +98,19 @@ class FileExporter {
         }
       }
 
-      // Add metadata
-      const metadata = {
-        title: article.metadata?.title || article.title,
-        author: article.metadata?.author || article.author,
-        url: article.metadata?.url || article.url,
-        siteName: article.metadata?.siteName || article.siteName,
-        timestamp: article.metadata?.timestamp || article.timestamp,
-        createdAt: article.createdAt,
-        hasTranslation: article.hasTranslation || false
-      };
-      articleFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
+      // Add metadata (Issue #138: only when includeMetadata is enabled)
+      if (includeMetadata) {
+        const metadata = {
+          title: article.metadata?.title || article.title,
+          author: article.metadata?.author || article.author,
+          url: article.metadata?.url || article.url,
+          siteName: article.metadata?.siteName || article.siteName,
+          timestamp: article.metadata?.timestamp || article.timestamp,
+          createdAt: article.createdAt,
+          hasTranslation: article.hasTranslation || false
+        };
+        articleFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
+      }
 
       // Add translation if exists
       if (article.hasTranslation && article.translatedMarkdown) {
@@ -109,25 +131,43 @@ class FileExporter {
 
   /**
    * Download blob as file using Chrome Downloads API
-   * Note: For Service Worker compatibility, converts ArrayBuffer to base64
+   *
+   * Performance Fix (Issue #140):
+   * - Prefer URL.createObjectURL to avoid Base64 memory overhead
+   * - Fall back to Base64 data URL if createObjectURL is unavailable
+   * - Object URL is revoked after download starts to free memory
    */
   async downloadBlob(blob, filename) {
+    let url;
+    let isObjectUrl = false;
+
     try {
-      // Convert blob to array buffer
-      const arrayBuffer = await blob.arrayBuffer();
+      // Prefer createObjectURL: avoids full binary→string conversion
+      if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        try {
+          url = URL.createObjectURL(blob);
+          isObjectUrl = true;
+        } catch (_e) {
+          // createObjectURL unavailable in this context; fall through to base64
+        }
+      }
 
-      // Convert to base64
-      const base64 = this.arrayBufferToBase64(arrayBuffer);
-
-      // Create data URL
-      const dataUrl = `data:${blob.type || 'application/octet-stream'};base64,${base64}`;
+      if (!url) {
+        // Fallback: Base64 data URL (works in all extension contexts)
+        const arrayBuffer = await blob.arrayBuffer();
+        const base64 = this.arrayBufferToBase64(arrayBuffer);
+        url = `data:${blob.type || 'application/octet-stream'};base64,${base64}`;
+      }
 
       return new Promise((resolve, reject) => {
         chrome.downloads.download({
-          url: dataUrl,
+          url,
           filename,
           saveAs: true
         }, (downloadId) => {
+          if (isObjectUrl) {
+            URL.revokeObjectURL(url);
+          }
           if (chrome.runtime.lastError) {
             console.error('[FileExporter] Download error:', chrome.runtime.lastError);
             reject(new Error(chrome.runtime.lastError.message));
@@ -139,6 +179,9 @@ class FileExporter {
         });
       });
     } catch (error) {
+      if (isObjectUrl && url) {
+        URL.revokeObjectURL(url);
+      }
       console.error('[FileExporter] downloadBlob error:', error);
       throw error;
     }

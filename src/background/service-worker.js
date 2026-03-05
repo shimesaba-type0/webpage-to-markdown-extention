@@ -148,10 +148,10 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     // First install - set default settings
     await chrome.storage.sync.set({
       enableTranslation: false,
-      preserveOriginal: true,
       includeMetadata: true,
       autoTranslate: false,
       downloadImages: false  // Issue #38: Default disabled for user consent
+      // preserveOriginal removed (Issue #138): original is always preserved
     });
 
     console.log('[Service Worker] Default settings initialized');
@@ -563,9 +563,9 @@ async function handleTranslateArticle(articleId) {
       geminiApiKey: '',
       geminiModel: 'gemini-2.0-flash',
       translationPrompt: '',
-      preserveOriginal: true,
       translationModel: 'claude-haiku-4-5-20251001',
       maxOutputTokens: 4096  // Issue #130: Configurable max output tokens
+      // preserveOriginal removed (Issue #138): original is always preserved
     });
 
     if (!settings.enableTranslation) {
@@ -682,7 +682,7 @@ async function handleTranslateArticle(articleId) {
     return {
       articleId,
       translatedMarkdown,
-      originalPreserved: settings.preserveOriginal
+      originalPreserved: true  // Issue #138: original is always preserved
     };
   } catch (error) {
     // Enhanced error logging (Issue #63, #71: Improve error serialization)
@@ -835,8 +835,13 @@ async function handleExportAll() {
       articlesData.push({ article, images });
     }
 
+    // Read export settings (Issue #138: apply includeMetadata to export)
+    const exportSettings = await chrome.storage.sync.get({ includeMetadata: true });
+
     // Export as ZIP
-    const result = await fileExporter.exportMultipleArticles(articlesData);
+    const result = await fileExporter.exportMultipleArticles(articlesData, {
+      includeMetadata: exportSettings.includeMetadata
+    });
     console.log('[Service Worker] Export completed:', result);
 
     return result;
@@ -862,8 +867,13 @@ async function handleExportArticle(articleId) {
     // Get article images
     const images = await storageManager.getArticleImages(articleId);
 
+    // Read export settings (Issue #138: apply includeMetadata to export)
+    const exportSettings = await chrome.storage.sync.get({ includeMetadata: true });
+
     // Export as ZIP
-    const result = await fileExporter.exportArticle(article, images);
+    const result = await fileExporter.exportArticle(article, images, {
+      includeMetadata: exportSettings.includeMetadata
+    });
     console.log('[Service Worker] Export completed:', result);
 
     return result;
