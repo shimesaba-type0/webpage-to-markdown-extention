@@ -47,13 +47,13 @@ async function loadSettings() {
     apiKey: '',
     geminiApiKey: '',
     geminiModel: 'gemini-2.0-flash',
-    preserveOriginal: true,
     translationPrompt: DEFAULT_TRANSLATION_PROMPT,
     includeMetadata: true,
     autoTranslate: false,
     downloadImages: false,  // Issue #38: Default to disabled for user consent
     translationModel: 'claude-haiku-4-5-20251001',  // Issue #99: Default model
     maxOutputTokens: 4096  // Issue #130: Default max output tokens
+    // preserveOriginal removed (Issue #138): original is always preserved
   });
 
   document.getElementById('enable-translation').checked = settings.enableTranslation;
@@ -62,7 +62,6 @@ async function loadSettings() {
   document.getElementById('translation-model').value = settings.translationModel;
   document.getElementById('gemini-api-key').value = settings.geminiApiKey;
   document.getElementById('gemini-model').value = settings.geminiModel;
-  document.getElementById('preserve-original').checked = settings.preserveOriginal;
   document.getElementById('translation-prompt').value = settings.translationPrompt;
   document.getElementById('include-metadata').checked = settings.includeMetadata;
   document.getElementById('auto-translate').checked = settings.autoTranslate;
@@ -77,7 +76,6 @@ async function saveSettings() {
     apiKey: document.getElementById('api-key').value,
     geminiApiKey: document.getElementById('gemini-api-key').value,
     geminiModel: document.getElementById('gemini-model').value,
-    preserveOriginal: document.getElementById('preserve-original').checked,
     translationPrompt: document.getElementById('translation-prompt').value,
     includeMetadata: document.getElementById('include-metadata').checked,
     autoTranslate: document.getElementById('auto-translate').checked,

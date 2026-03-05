@@ -8,8 +8,18 @@
 class FileExporter {
   /**
    * Export a single article as ZIP
+   *
+   * Bug Fix (Issue #138):
+   * - Accept options to conditionally include metadata.json
+   * - includeMetadata=false skips metadata.json output
+   *
+   * @param {Object} article - Article data
+   * @param {Array} images - Array of image objects
+   * @param {Object} options - Export options
+   * @param {boolean} [options.includeMetadata=true] - Whether to include metadata.json
    */
-  async exportArticle(article, images = []) {
+  async exportArticle(article, images = [], options = {}) {
+    const { includeMetadata = true } = options;
     const zip = new JSZip();
 
     // Sanitize filename
@@ -28,17 +38,19 @@ class FileExporter {
       }
     }
 
-    // Add metadata JSON
-    const metadata = {
-      title: article.metadata?.title || article.title,
-      author: article.metadata?.author || article.author,
-      url: article.metadata?.url || article.url,
-      siteName: article.metadata?.siteName || article.siteName,
-      timestamp: article.metadata?.timestamp || article.timestamp,
-      createdAt: article.createdAt,
-      hasTranslation: article.hasTranslation || false
-    };
-    zip.file('metadata.json', JSON.stringify(metadata, null, 2));
+    // Add metadata JSON (Issue #138: only when includeMetadata is enabled)
+    if (includeMetadata) {
+      const metadata = {
+        title: article.metadata?.title || article.title,
+        author: article.metadata?.author || article.author,
+        url: article.metadata?.url || article.url,
+        siteName: article.metadata?.siteName || article.siteName,
+        timestamp: article.metadata?.timestamp || article.timestamp,
+        createdAt: article.createdAt,
+        hasTranslation: article.hasTranslation || false
+      };
+      zip.file('metadata.json', JSON.stringify(metadata, null, 2));
+    }
 
     // Add translation if exists
     if (article.hasTranslation && article.translatedMarkdown) {
@@ -56,8 +68,16 @@ class FileExporter {
 
   /**
    * Export multiple articles as a single ZIP
+   *
+   * Bug Fix (Issue #138):
+   * - Accept options to conditionally include metadata.json per article
+   *
+   * @param {Array} articlesData - Array of {article, images} objects
+   * @param {Object} options - Export options
+   * @param {boolean} [options.includeMetadata=true] - Whether to include metadata.json
    */
-  async exportMultipleArticles(articlesData) {
+  async exportMultipleArticles(articlesData, options = {}) {
+    const { includeMetadata = true } = options;
     const zip = new JSZip();
 
     for (let i = 0; i < articlesData.length; i++) {
@@ -78,17 +98,19 @@ class FileExporter {
         }
       }
 
-      // Add metadata
-      const metadata = {
-        title: article.metadata?.title || article.title,
-        author: article.metadata?.author || article.author,
-        url: article.metadata?.url || article.url,
-        siteName: article.metadata?.siteName || article.siteName,
-        timestamp: article.metadata?.timestamp || article.timestamp,
-        createdAt: article.createdAt,
-        hasTranslation: article.hasTranslation || false
-      };
-      articleFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
+      // Add metadata (Issue #138: only when includeMetadata is enabled)
+      if (includeMetadata) {
+        const metadata = {
+          title: article.metadata?.title || article.title,
+          author: article.metadata?.author || article.author,
+          url: article.metadata?.url || article.url,
+          siteName: article.metadata?.siteName || article.siteName,
+          timestamp: article.metadata?.timestamp || article.timestamp,
+          createdAt: article.createdAt,
+          hasTranslation: article.hasTranslation || false
+        };
+        articleFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
+      }
 
       // Add translation if exists
       if (article.hasTranslation && article.translatedMarkdown) {
@@ -109,17 +131,18 @@ class FileExporter {
 
   /**
    * Download blob as file using Chrome Downloads API
-   * Note: For Service Worker compatibility, converts ArrayBuffer to base64
+   *
+   * Performance Fix (Issue #140):
+   * - URL.createObjectURL is NOT available in MV3 Service Workers (MDN: "not available
+   *   in Service Workers due to its potential to create memory leaks").
+   * - Base64 data URL is the only reliable approach in this context.
+   * - Memory overhead is mitigated by the chunked arrayBufferToBase64 implementation
+   *   which avoids O(n²) string allocation from per-character concatenation.
    */
   async downloadBlob(blob, filename) {
     try {
-      // Convert blob to array buffer
       const arrayBuffer = await blob.arrayBuffer();
-
-      // Convert to base64
       const base64 = this.arrayBufferToBase64(arrayBuffer);
-
-      // Create data URL
       const dataUrl = `data:${blob.type || 'application/octet-stream'};base64,${base64}`;
 
       return new Promise((resolve, reject) => {
@@ -146,14 +169,20 @@ class FileExporter {
 
   /**
    * Convert ArrayBuffer to Base64 string (Service Worker compatible)
+   *
+   * Performance Fix (Issue #140):
+   * - Processes in 64KB chunks using String.fromCharCode.apply() instead of
+   *   per-character concatenation, reducing string allocation from O(n²) to O(n).
+   * - Avoids synchronous event-loop blocking on large payloads.
    */
   arrayBufferToBase64(buffer) {
     const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    const CHUNK_SIZE = 65536; // 64KB per chunk
+    const chunks = [];
+    for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+      chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK_SIZE)));
     }
-    return btoa(binary);
+    return btoa(chunks.join(''));
   }
 
   /**

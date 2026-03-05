@@ -540,22 +540,22 @@ async function viewArticle(articleId) {
     // Using tabId instead of windowId for better tab-specific behavior
     await chrome.sidePanel.open({ tabId: tab.id });
 
-    // Send article data directly to SidePanel (Issue #26)
-    // This ensures content displays even when SidePanel is already open
-    setTimeout(async () => {
-      try {
-        await chrome.runtime.sendMessage({
-          action: 'displayMarkdown',
-          data: viewingArticle
-        });
-        console.log('[Popup] displayMarkdown message sent to SidePanel');
-      } catch (error) {
-        console.error('[Popup] Failed to send message to SidePanel:', error);
-      } finally {
-        // Close popup after message is sent (Rev2 feedback)
-        window.close();
+    // Send article data directly to SidePanel (Issue #26, #139)
+    // Use retry-based delivery instead of fixed 500ms wait to avoid race conditions
+    // viewingArticle is already saved to storage above as fallback for SidePanel init
+    try {
+      const sent = await sendToSidePanelWithRetry(viewingArticle);
+      if (sent) {
+        console.log('[Popup] displayMarkdown sent to SidePanel successfully');
+      } else {
+        console.log('[Popup] displayMarkdown: SidePanel not ready, using storage fallback (viewingArticle)');
       }
-    }, 500);
+    } catch (error) {
+      console.error('[Popup] Failed to send message to SidePanel:', error);
+    } finally {
+      // Close popup after message delivery attempt (Rev2 feedback)
+      window.close();
+    }
   } catch (error) {
     console.error('[Popup] View article error:', error);
     showStatus(`✗ ${error.message}`, 'error');
