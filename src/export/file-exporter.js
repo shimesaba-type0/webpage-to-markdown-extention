@@ -23,7 +23,7 @@ class FileExporter {
       const imagesFolder = zip.folder('images');
       for (const image of images) {
         if (image.blob) {
-          imagesFolder.file(image.filename || `image-${image.id}.jpg`, image.blob);
+          imagesFolder.file(this.resolveExportImageFilename(image), image.blob);
         }
       }
     }
@@ -73,7 +73,7 @@ class FileExporter {
         const imagesFolder = articleFolder.folder('images');
         for (const image of images) {
           if (image.blob) {
-            imagesFolder.file(image.filename || `image-${image.id}.jpg`, image.blob);
+            imagesFolder.file(this.resolveExportImageFilename(image), image.blob);
           }
         }
       }
@@ -154,6 +154,59 @@ class FileExporter {
       binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
+  }
+
+  /**
+   * Resolve image filename for ZIP export.
+   * Priority: localPath basename -> filename -> generated fallback.
+   */
+  resolveExportImageFilename(image) {
+    const localPathBasename = this.extractBasename(image?.localPath);
+    if (localPathBasename) {
+      return localPathBasename;
+    }
+
+    if (image?.filename) {
+      const safeFilename = this.sanitizeFilename(String(image.filename));
+      if (safeFilename) {
+        return safeFilename;
+      }
+    }
+
+    const ext = this.getExtensionFromMimeType(image?.mimeType);
+    const id = image?.id ?? 'unknown';
+    return `image-${id}${ext}`;
+  }
+
+  /**
+   * Extract basename from a path-like string and sanitize it.
+   */
+  extractBasename(path) {
+    if (!path || typeof path !== 'string') {
+      return '';
+    }
+
+    const normalizedPath = path.replace(/\\/g, '/');
+    const basename = normalizedPath.split('/').pop() || '';
+    return this.sanitizeFilename(basename);
+  }
+
+  /**
+   * Map image mime type to file extension.
+   */
+  getExtensionFromMimeType(mimeType) {
+    const map = {
+      'image/jpeg': '.jpg',
+      'image/jpg': '.jpg',
+      'image/png': '.png',
+      'image/gif': '.gif',
+      'image/webp': '.webp',
+      'image/svg+xml': '.svg',
+      'image/avif': '.avif',
+      'image/bmp': '.bmp'
+    };
+
+    return map[mimeType] || '.jpg';
   }
 
   /**
