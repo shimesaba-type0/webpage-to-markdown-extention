@@ -544,8 +544,12 @@ async function viewArticle(articleId) {
     // Use retry-based delivery instead of fixed 500ms wait to avoid race conditions
     // viewingArticle is already saved to storage above as fallback for SidePanel init
     try {
-      await sendToSidePanelWithRetry(viewingArticle);
-      console.log('[Popup] displayMarkdown sent to SidePanel');
+      const sent = await sendToSidePanelWithRetry(viewingArticle);
+      if (sent) {
+        console.log('[Popup] displayMarkdown sent to SidePanel successfully');
+      } else {
+        console.log('[Popup] displayMarkdown: SidePanel not ready, using storage fallback (viewingArticle)');
+      }
     } catch (error) {
       console.error('[Popup] Failed to send message to SidePanel:', error);
     } finally {
