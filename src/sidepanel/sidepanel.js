@@ -136,9 +136,15 @@ async function init() {
  * - Primary: Message-based communication (displayMarkdown action)
  * - Fallback: storage.local flags for edge cases (SidePanel reopened, message missed)
  *
+ * Bug Fix (Issue #137):
+ * - pendingExtraction can be either a data object (saved by popup fallback) or
+ *   a boolean true (legacy re-extraction flag). Handle both types correctly:
+ *   - Object: display the saved data directly via displayMarkdown()
+ *   - Boolean true: trigger re-extraction from current page
+ *
  * Returns:
- * - true: Trigger auto-extraction (pendingExtraction flag set)
- * - false: Article displayed from storage (viewingArticle fallback)
+ * - true: Trigger auto-extraction (pendingExtraction boolean flag set)
+ * - false: Article displayed from storage (viewingArticle or pendingExtraction data)
  * - null: No action needed (show empty state)
  */
 async function checkPendingExtraction() {
@@ -160,10 +166,18 @@ async function checkPendingExtraction() {
 
     // Check for pending extraction (Extract & Save flow)
     const extractionResult = await chrome.storage.local.get('pendingExtraction');
-    if (extractionResult.pendingExtraction) {
-      console.log('[SidePanel] Pending extraction detected, auto-extracting');
+    const pending = extractionResult.pendingExtraction;
+    if (pending) {
       await chrome.storage.local.remove('pendingExtraction');
-      // Return true to trigger extraction
+      if (typeof pending === 'object') {
+        // Bug Fix (Issue #137): pendingExtraction is a data object saved by popup fallback.
+        // Display it directly instead of triggering re-extraction.
+        console.log('[SidePanel] [FALLBACK] Pending extraction data found, displaying directly');
+        displayMarkdown(pending);
+        return false;
+      }
+      // Boolean true: legacy re-extraction flag
+      console.log('[SidePanel] Pending extraction flag detected, auto-extracting');
       return true;
     }
   } catch (error) {
