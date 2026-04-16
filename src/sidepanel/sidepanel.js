@@ -47,6 +47,7 @@ let currentMarkdown = '';
 let currentTranslatedMarkdown = null; // Issue #84: Store translated content
 let currentMetadata = null;
 let currentArticleId = null; // Issue #85: Track current article for translation
+let currentImages = []; // Issue #147: Preserve image mappings across re-renders
 let currentBlobUrls = []; // Store blob URLs for cleanup (Issue #25)
 let currentFontSize = 100; // Percentage (Issue #51)
 let isShowingTranslation = false; // Issue #84: Track which view is active
@@ -270,6 +271,40 @@ function cleanupBlobUrls() {
   console.log('[SidePanel] Cleaned up blob URLs');
 }
 
+function renderMarkdownWithImages(markdown, images = currentImages) {
+  let processedMarkdown = markdown;
+
+  if (images && images.length > 0) {
+    console.log(`[SidePanel] Processing ${images.length} images`);
+
+    cleanupBlobUrls();
+
+    const imageMap = {};
+    for (const img of images) {
+      if (img.blob && img.localPath) {
+        try {
+          const blobUrl = URL.createObjectURL(img.blob);
+          imageMap[img.localPath] = blobUrl;
+          currentBlobUrls.push(blobUrl);
+          console.log(`[SidePanel] Mapped ${img.localPath} → ${blobUrl}`);
+        } catch (error) {
+          console.error('[SidePanel] Failed to create blob URL for image:', img.localPath, error);
+        }
+      } else {
+        console.warn('[SidePanel] Skipping invalid image (missing blob or localPath):', img);
+      }
+    }
+
+    for (const [localPath, blobUrl] of Object.entries(imageMap)) {
+      processedMarkdown = processedMarkdown.replaceAll(localPath, blobUrl);
+    }
+
+    console.log(`[SidePanel] Replaced ${Object.keys(imageMap).length} image paths`);
+  }
+
+  renderMarkdown(processedMarkdown);
+}
+
 /**
  * Display markdown content
  */
@@ -295,6 +330,7 @@ function displayMarkdown(data) {
     currentMarkdown = markdown;
     currentMetadata = metadata;
     currentArticleId = articleId; // Issue #85: Track article ID for translation
+    currentImages = Array.isArray(images) ? images : currentImages;
 
     // Issue #84: Handle translated content
     currentTranslatedMarkdown = translatedMarkdown || null;
@@ -345,42 +381,8 @@ function displayMarkdown(data) {
       articleUrl.style.display = 'none';
     }
 
-    // Process images: Convert Blobs to URLs and replace paths (Issue #25)
-    let processedMarkdown = markdown;
-    if (images && images.length > 0) {
-      console.log(`[SidePanel] Processing ${images.length} images`);
-
-      // Clean up old blob URLs to prevent memory leaks
-      cleanupBlobUrls();
-
-      // Create blob URLs and build path mapping
-      const imageMap = {};
-      for (const img of images) {
-        if (img.blob && img.localPath) {
-          try {
-            const blobUrl = URL.createObjectURL(img.blob);
-            imageMap[img.localPath] = blobUrl;
-            currentBlobUrls.push(blobUrl);
-            console.log(`[SidePanel] Mapped ${img.localPath} → ${blobUrl}`);
-          } catch (error) {
-            console.error('[SidePanel] Failed to create blob URL for image:', img.localPath, error);
-          }
-        } else {
-          // Rev1 feedback: Log warning for invalid images
-          console.warn('[SidePanel] Skipping invalid image (missing blob or localPath):', img);
-        }
-      }
-
-      // Replace image paths in markdown
-      for (const [localPath, blobUrl] of Object.entries(imageMap)) {
-        processedMarkdown = processedMarkdown.replaceAll(localPath, blobUrl);
-      }
-
-      console.log(`[SidePanel] Replaced ${Object.keys(imageMap).length} image paths`);
-    }
-
-    // Render markdown
-    renderMarkdown(processedMarkdown);
+    // Render markdown with preserved image mappings (Issue #147)
+    renderMarkdownWithImages(markdown, images);
 
     // Enable clickable links (Issue #56)
     enableClickableLinks();
@@ -761,7 +763,8 @@ function reloadCurrentArticle() {
     markdown: currentMarkdown,
     translatedMarkdown: currentTranslatedMarkdown,
     hasTranslation: !!currentTranslatedMarkdown,
-    articleId: currentArticleId
+    articleId: currentArticleId,
+    images: currentImages
   });
 }
 
@@ -789,7 +792,7 @@ function switchTranslationView(showTranslation) {
 
   // Render the appropriate content
   const markdownToRender = showTranslation ? currentTranslatedMarkdown : currentMarkdown;
-  renderMarkdown(markdownToRender);
+  renderMarkdownWithImages(markdownToRender);
 
   // Enable clickable links for the new content
   enableClickableLinks();
@@ -873,8 +876,12 @@ async function handleTranslateArticle() {
       currentTranslatedMarkdown = response.translation.translatedMarkdown;
       translationSectionsBuffer = []; // Clear progressive buffer
 
-      // Show success message (Issue #88)
-      showTranslationStatus('success', '✓ Translation completed successfully!');
+      const failedSections = response.translation.failedSections || 0;
+      const totalSections = response.translation.totalSections || 0;
+      const successMessage = failedSections > 0
+        ? `⚠️ Translation completed with ${failedSections}/${totalSections} sections falling back to the original text.`
+        : '✓ Translation completed successfully!';
+      showTranslationStatus(failedSections > 0 ? 'error' : 'success', successMessage);
 
       // Show translation toggle; switch to translated view if not already showing it
       translationToggle.classList.remove('hidden');
@@ -882,7 +889,7 @@ async function handleTranslateArticle() {
         switchTranslationView(true);
       } else {
         // Already showing translation progressively; re-render with final content
-        renderMarkdown(currentTranslatedMarkdown);
+        renderMarkdownWithImages(currentTranslatedMarkdown);
         enableClickableLinks();
       }
 
@@ -909,6 +916,8 @@ async function handleTranslateArticle() {
       errorHtml = `⚠️ ${error.message}`;
     } else if (error.message.includes('authentication failed')) {
       errorHtml = '⚠️ API authentication failed. Please check your API key in <a href="#" id="open-settings-link">Settings</a>.';
+    } else if (error.message.includes('Invalid Anthropic model ID')) {
+      errorHtml = '⚠️ The selected Anthropic model is no longer valid. Please <a href="#" id="open-settings-link">open Settings</a> and choose a supported model.';
     } else {
       errorHtml = `⚠️ Translation failed: ${error.message}`;
     }
