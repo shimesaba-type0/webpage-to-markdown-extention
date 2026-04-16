@@ -20,6 +20,8 @@ const DEFAULT_TRANSLATION_PROMPT = `以下のMarkdown形式のテキストを日
 翻訳対象テキスト:
 {content}`;
 
+const DEFAULT_ANTHROPIC_MODEL = 'claude-3-5-haiku-20241022';
+
 // 設定の保存と読み込み
 document.getElementById('save-btn').addEventListener('click', saveSettings);
 document.getElementById('show-key-btn').addEventListener('click', toggleKeyVisibility);
@@ -51,7 +53,7 @@ async function loadSettings() {
     includeMetadata: true,
     autoTranslate: false,
     downloadImages: false,  // Issue #38: Default to disabled for user consent
-    translationModel: 'claude-haiku-4-5-20251001',  // Issue #99: Default model
+    translationModel: DEFAULT_ANTHROPIC_MODEL,  // Issue #99: Default model
     maxOutputTokens: 4096  // Issue #130: Default max output tokens
     // preserveOriginal removed (Issue #138): original is always preserved
   });

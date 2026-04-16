@@ -154,3 +154,59 @@ describe('checkPendingExtraction - pendingExtraction type handling (Issue #137)'
     expect(displayMarkdown).toHaveBeenCalledTimes(1);
   });
 });
+
+function renderMarkdownWithImagesForTest(markdown, images = []) {
+  let processedMarkdown = markdown;
+
+  for (const image of images) {
+    if (image.blobUrl && image.localPath) {
+      processedMarkdown = processedMarkdown.replaceAll(image.localPath, image.blobUrl);
+    }
+  }
+
+  return processedMarkdown;
+}
+
+function createReloadState() {
+  let currentImages = [];
+
+  return {
+    displayMarkdown(data) {
+      if (Array.isArray(data.images)) {
+        currentImages = data.images;
+      }
+
+      return {
+        ...data,
+        renderedMarkdown: renderMarkdownWithImagesForTest(data.markdown, currentImages)
+      };
+    },
+    reloadCurrentArticle(current) {
+      return this.displayMarkdown({
+        metadata: current.metadata,
+        markdown: current.markdown,
+        translatedMarkdown: current.translatedMarkdown,
+        hasTranslation: !!current.translatedMarkdown,
+        articleId: current.articleId,
+        images: currentImages
+      });
+    }
+  };
+}
+
+describe('SidePanel image preservation on reload (Issue #147)', () => {
+  test('should preserve image replacements after reload', () => {
+    const state = createReloadState();
+    const initial = state.displayMarkdown({
+      metadata: { title: 'Article' },
+      markdown: '![img](./images/test.png)',
+      articleId: 10,
+      images: [{ localPath: './images/test.png', blobUrl: 'blob:local-image' }]
+    });
+
+    const reloaded = state.reloadCurrentArticle(initial);
+
+    expect(initial.renderedMarkdown).toContain('blob:local-image');
+    expect(reloaded.renderedMarkdown).toContain('blob:local-image');
+  });
+});

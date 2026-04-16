@@ -93,6 +93,8 @@ class ApiRateLimiter {
 
 // Global rate limiter instance (Issue #81 Item #5)
 const apiRateLimiter = new ApiRateLimiter();
+const DEFAULT_ANTHROPIC_MODEL = 'claude-3-5-haiku-20241022';
+const INVALID_ANTHROPIC_MODEL_PREFIX = 'Invalid Anthropic model ID:';
 
 /**
  * Track in-progress translations to prevent duplicate execution (Issue #131)
@@ -105,9 +107,9 @@ const translatingArticleIds = new Set();
  * Gemini free-tier models have $0 cost.
  */
 const MODEL_PRICING = {
-  'claude-haiku-4-5-20251001':  { input: 0.80,  output: 4.00  },
-  'claude-sonnet-4-5-20250929': { input: 3.00,  output: 15.00 },
-  'claude-opus-4-6':            { input: 15.00, output: 75.00 },
+  'claude-3-5-haiku-20241022': { input: 0.80,  output: 4.00  },
+  'claude-sonnet-4-20250514':  { input: 3.00,  output: 15.00 },
+  'claude-opus-4-1-20250805':  { input: 15.00, output: 75.00 },
   'gemini-2.0-flash':    { input: 0, output: 0 },
   'gemini-1.5-flash':    { input: 0, output: 0 },
   'gemini-1.5-flash-8b': { input: 0, output: 0 },
@@ -423,7 +425,7 @@ function splitMarkdownIntoSections(markdown) {
  * @param {string} customPrompt - Optional custom prompt
  * @returns {Promise<string>} Translated text
  */
-async function translateSectionViaAPI(apiKey, sectionContent, customPrompt = null, model = 'claude-haiku-4-5-20251001', maxOutputTokens = 4096) {
+async function translateSectionViaAPI(apiKey, sectionContent, customPrompt = null, model = DEFAULT_ANTHROPIC_MODEL, maxOutputTokens = 4096) {
   let prompt;
 
   // Use custom prompt if provided
@@ -485,6 +487,14 @@ ${sectionContent}`;
         statusText: response.statusText,
         ...errorInfo
       });
+      const rawErrorMessage = errorInfo.message || response.statusText || '';
+      if (
+        response.status === 400 &&
+        /model/i.test(rawErrorMessage) &&
+        /(invalid|not found|unknown|supported)/i.test(rawErrorMessage)
+      ) {
+        throw new Error(`${INVALID_ANTHROPIC_MODEL_PREFIX} ${model}. Please choose a valid model in Settings.`);
+      }
       const errorMessage = errorInfo.message
         ? `Translation API error: ${response.status} - ${errorInfo.message}`
         : `Translation API error: ${response.status} ${response.statusText}`;
@@ -563,7 +573,7 @@ async function handleTranslateArticle(articleId) {
       geminiApiKey: '',
       geminiModel: 'gemini-2.0-flash',
       translationPrompt: '',
-      translationModel: 'claude-haiku-4-5-20251001',
+      translationModel: DEFAULT_ANTHROPIC_MODEL,
       maxOutputTokens: 4096  // Issue #130: Configurable max output tokens
       // preserveOriginal removed (Issue #138): original is always preserved
     });
@@ -607,6 +617,7 @@ async function handleTranslateArticle(articleId) {
     // Split markdown into sections (Issue #70: In Service Worker)
     const sections = splitMarkdownIntoSections(article.markdown);
     const translatedSections = [];
+    let failedSections = 0;
 
     console.log(`[Service Worker] Starting translation of ${sections.length} sections...`);
 
@@ -632,21 +643,26 @@ async function handleTranslateArticle(articleId) {
             settings.apiKey,
             section.content,
             settings.translationPrompt || null,
-            settings.translationModel || 'claude-haiku-4-5-20251001',
+            settings.translationModel || DEFAULT_ANTHROPIC_MODEL,
             settings.maxOutputTokens || 4096  // Issue #130: Use configured value
           );
         }
         translatedSections.push(translated);
       } catch (error) {
         console.error(`[Service Worker] Failed to translate section ${i + 1}:`, error);
-        // On error, use original text
-        translated = section.content;
-        translatedSections.push(section.content);
+        failedSections++;
 
-        // Re-throw if it's an auth error
+        // Re-throw immediately for auth and invalid model errors so the user can fix settings
         if (error.message.includes('401') || error.message.includes('403')) {
           throw new Error('API authentication failed. Please check your API key in Settings.');
         }
+        if (error.message.includes(INVALID_ANTHROPIC_MODEL_PREFIX)) {
+          throw error;
+        }
+
+        // Keep original text for partial failures so users still get a usable document
+        translated = section.content;
+        translatedSections.push(section.content);
       }
 
       // Send translated section to SidePanel for progressive display (Issue #109)
@@ -673,6 +689,10 @@ async function handleTranslateArticle(articleId) {
       }
     }
 
+    if (failedSections === sections.length) {
+      throw new Error('Translation failed for all sections. Please try again after checking your model, network, or rate limits.');
+    }
+
     const translatedMarkdown = translatedSections.join('\n\n');
 
     // Save translation
@@ -682,6 +702,8 @@ async function handleTranslateArticle(articleId) {
     return {
       articleId,
       translatedMarkdown,
+      failedSections,
+      totalSections: sections.length,
       originalPreserved: true  // Issue #138: original is always preserved
     };
   } catch (error) {
